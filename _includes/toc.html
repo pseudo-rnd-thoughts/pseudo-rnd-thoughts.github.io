@@ -1,0 +1,33 @@
+{% if include.html %}
+{% assign headers = include.html | split: '<h' %}
+{% assign toc_items = "" | split: "" %}
+{% for header in headers %}
+  {% if header contains 'id="' %}
+    {% assign level = header | slice: 0, 1 %}
+    {% if level == "2" or level == "3" %}
+      {% assign id_start = header | split: 'id="' | last %}
+      {% assign id = id_start | split: '"' | first %}
+      {% assign text_start = header | split: '>' | slice: 1 | join: '>' %}
+      {% assign text = text_start | split: '</h' | first | strip_html %}
+      {% capture toc_item %}{{ level }}|{{ id }}|{{ text }}{% endcapture %}
+      {% assign toc_items = toc_items | push: toc_item %}
+    {% endif %}
+  {% endif %}
+{% endfor %}
+{% if toc_items.size > 0 %}
+<nav class="toc">
+  <h4>Contents</h4>
+  <ul>
+    {% for item in toc_items %}
+      {% assign parts = item | split: '|' %}
+      {% assign level = parts[0] %}
+      {% assign id = parts[1] %}
+      {% assign text = parts[2] %}
+      <li class="toc-level-{{ level }}">
+        <a href="#{{ id }}">{{ text }}</a>
+      </li>
+    {% endfor %}
+  </ul>
+</nav>
+{% endif %}
+{% endif %}

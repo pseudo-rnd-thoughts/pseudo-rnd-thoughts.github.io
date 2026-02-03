@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Off-Policy Correction: From TD to Retrace | Mark Towers</title>
+<meta name="description" content="Reinforcement Learning Engineer, Open Source Maintainer, PhD in Explainable RL">
+
+<!-- Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+<!-- Stylesheet -->
+<link rel="stylesheet" href="/assets/css/main.css">
+
+
+<!-- MathJax -->
+<script>
+MathJax = {
+  tex: {
+    inlineMath: [['$', '$'], ['\\(', '\\)']],
+    displayMath: [['$$', '$$'], ['\\[', '\\]']]
+  },
+  svg: {
+    fontCache: 'global'
+  }
+};
+</script>
+<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+
+
+<!-- SEO -->
+<!-- Begin Jekyll SEO tag v2.8.0 -->
+<title>Off-Policy Correction: From TD to Retrace | Mark Towers</title>
+<meta name="generator" content="Jekyll v4.4.1" />
+<meta property="og:title" content="Off-Policy Correction: From TD to Retrace" />
+<meta name="author" content="Mark Towers" />
+<meta property="og:locale" content="en_US" />
+<meta name="description" content="Understanding importance sampling corrections in reinforcement learning, from simple TD errors through n-step returns to the Retrace algorithm." />
+<meta property="og:description" content="Understanding importance sampling corrections in reinforcement learning, from simple TD errors through n-step returns to the Retrace algorithm." />
+<link rel="canonical" href="http://localhost:4000/blog/off-policy-correction/" />
+<meta property="og:url" content="http://localhost:4000/blog/off-policy-correction/" />
+<meta property="og:site_name" content="Mark Towers" />
+<meta property="og:type" content="article" />
+<meta property="article:published_time" content="2026-01-31T00:00:00+00:00" />
+<meta name="twitter:card" content="summary" />
+<meta property="twitter:title" content="Off-Policy Correction: From TD to Retrace" />
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Mark Towers"},"dateModified":"2026-01-31T00:00:00+00:00","datePublished":"2026-01-31T00:00:00+00:00","description":"Understanding importance sampling corrections in reinforcement learning, from simple TD errors through n-step returns to the Retrace algorithm.","headline":"Off-Policy Correction: From TD to Retrace","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/blog/off-policy-correction/"},"url":"http://localhost:4000/blog/off-policy-correction/"}</script>
+<!-- End Jekyll SEO tag -->
+
+
+</head>
+<body>
+  <header class="site-header">
+  <div class="container">
+    <nav class="site-nav">
+      <a href="/" >About</a>
+      <a href="/blog" class="active">Blog</a>
+      <a href="/photography" >Photography</a>
+    </nav>
+  </div>
+</header>
+
+
+  <main class="site-main">
+    
+
+
+
+<article class="post">
+  <div class="container">
+    <header class="post-header">
+      <h1>Off-Policy Correction: From TD to Retrace</h1>
+      <div class="post-meta">
+        <time datetime="2026-01-31T00:00:00+00:00">
+          January 31, 2026
+        </time>
+        <span class="reading-time">16 min read</span>
+      </div>
+    </header>
+
+    <div class="post-container">
+      
+      
+      <aside class="post-sidebar">
+        
+
+
+
+
+<nav class="toc">
+  <h4>Contents</h4>
+  <ul>
+    
+      
+      
+      
+      
+      <li class="toc-level-2">
+        <a href="#algorithms">Importance Sampling Ratios</a>
+      </li>
+    
+      
+      
+      
+      
+      <li class="toc-level-3">
+        <a href="#visualization">3. Retrace(λ): The Safe Solution</a>
+      </li>
+    
+      
+      
+      
+      
+      <li class="toc-level-2">
+        <a href="#product-display">Interactive Visualization</a>
+      </li>
+    
+      
+      
+      
+      
+      <li class="toc-level-2">
+        <a href="#intuition">Implementation</a>
+      </li>
+    
+      
+      
+      
+      
+      <li class="toc-level-3">
+        <a href="#references">Special Cases</a>
+      </li>
+    
+      
+      
+      
+      
+      <li class="toc-level-2">
+        <a href="#target-${t}">References</a>
+      </li>
+    
+  </ul>
+</nav>
+
+
+
+      </aside>
+      
+
+      <div class="post-content">
+        <style>
+    /* Visualization specific styles */
+    .policy-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .policy-target {
+        background: rgba(78, 205, 196, 0.15);
+        border: 1px solid var(--primary);
+    }
+
+    .policy-behavior {
+        background: rgba(255, 166, 87, 0.15);
+        border: 1px solid var(--advantage-positive);
+    }
+
+    .policy-legend {
+        display: flex;
+        gap: 24px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+    }
+
+    .ratio-display {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .ratio-fraction {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        font-size: 0.8rem;
+    }
+
+    .ratio-numerator {
+        color: var(--primary);
+        border-bottom: 1px solid var(--text-muted);
+        padding-bottom: 2px;
+    }
+
+    .ratio-denominator {
+        color: var(--advantage-positive);
+        padding-top: 2px;
+    }
+
+    .ratio-value {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-top: 4px;
+    }
+
+    .ratio-value.high {
+        color: var(--reward-negative);
+    }
+
+    .ratio-value.normal {
+        color: var(--text-primary);
+    }
+
+    .ratio-value.low {
+        color: var(--advantage-negative);
+    }
+
+    .truncated-value {
+        color: var(--reward-positive) !important;
+    }
+
+    .action-label {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        margin-top: 4px;
+    }
+
+    /* Algorithm selector tabs */
+    .algorithm-tabs {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+    }
+
+    .algorithm-tab {
+        padding: 10px 20px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg-elevated);
+        color: var(--text-secondary);
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 0.9rem;
+    }
+
+    .algorithm-tab:hover {
+        border-color: var(--primary);
+        color: var(--text-primary);
+    }
+
+    .algorithm-tab.active {
+        background: var(--primary);
+        color: var(--bg-dark);
+        border-color: var(--primary);
+    }
+
+    /* Extended transition for policy probs */
+    .transition-extended {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        min-width: 100px;
+        padding-top: 23px;
+    }
+
+    .prob-row {
+        display: flex;
+        gap: 12px;
+        margin-top: 8px;
+        font-size: 0.75rem;
+    }
+
+    .prob-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .prob-label {
+        color: var(--text-muted);
+    }
+
+    .prob-value-target {
+        color: var(--primary);
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .prob-value-behavior {
+        color: var(--advantage-positive);
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    /* Product visualization */
+    .product-chain {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-family: 'JetBrains Mono', monospace;
+        flex-wrap: wrap;
+        justify-content: center;
+        padding: 16px;
+        background: var(--bg-dark);
+        border-radius: 8px;
+        margin: 16px 0;
+    }
+
+    .product-term {
+        padding: 4px 8px;
+        border-radius: 4px;
+        background: var(--bg-elevated);
+    }
+
+    .product-term.included {
+        border: 1px solid var(--primary);
+    }
+
+    .product-term.excluded {
+        opacity: 0.4;
+        text-decoration: line-through;
+    }
+
+    .product-operator {
+        color: var(--text-muted);
+    }
+
+    .product-result {
+        color: var(--reward-positive);
+        font-weight: 600;
+        padding-left: 8px;
+        border-left: 2px solid var(--border);
+        margin-left: 8px;
+    }
+
+    /* Variance indicator */
+    .variance-meter {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 16px 0;
+        padding: 12px 16px;
+        background: var(--bg-dark);
+        border-radius: 8px;
+    }
+
+    .variance-label {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        min-width: 80px;
+    }
+
+    .variance-bar {
+        flex: 1;
+        height: 8px;
+        background: var(--bg-elevated);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+
+    .variance-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.5s ease-out;
+    }
+
+    .variance-fill.low {
+        background: var(--reward-positive);
+    }
+
+    .variance-fill.medium {
+        background: var(--advantage-positive);
+    }
+
+    .variance-fill.high {
+        background: var(--reward-negative);
+    }
+
+    .variance-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.9rem;
+        min-width: 60px;
+        text-align: right;
+    }
+
+    /* Formula highlight box */
+    .formula-box {
+        background: var(--bg-dark);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin: 16px 0;
+    }
+
+    .formula-box.active {
+        border-color: var(--primary);
+        box-shadow: 0 0 15px var(--primary-dim);
+    }
+
+    .formula-box .formula-name {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 8px;
+    }
+
+    /* Trace coefficient row */
+    .trace-row {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        min-width: max-content;
+        padding: 0 20px;
+        margin-bottom: 16px;
+    }
+
+    .trace-cell {
+        min-width: 120px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .trace-cell .trace-symbol {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
+
+    .trace-cell .trace-value {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 1rem;
+        font-weight: 600;
+        margin-top: 4px;
+        transition: all 0.3s;
+    }
+
+    .trace-cell .trace-value.truncated {
+        color: var(--reward-positive);
+    }
+
+    .trace-cell .trace-value.full {
+        color: var(--reward-negative);
+    }
+
+    .trace-cell .truncate-indicator {
+        font-size: 0.7rem;
+        color: var(--reward-positive);
+        margin-top: 2px;
+    }
+</style>
+
+<section id="introduction">
+    <h2>The Off-Policy Problem</h2>
+    <p>
+        In reinforcement learning, we often want to learn about one policy while following another. The policy we're evaluating or improving is called the <strong>target policy</strong> (π), while the policy generating our experience is the <strong>behavior policy</strong> (μ).
+    </p>
+    <p>
+        This situation arises naturally in many scenarios: learning from historical data, using exploration policies, or leveraging experience replay buffers. The challenge is that the returns we observe come from μ, but we need value estimates for π.
+    </p>
+
+    <div class="insight-box">
+        <h4>The Core Problem</h4>
+        <p>When π ≠ μ, the distribution of trajectories differs between what we observe and what we want to evaluate. Naive use of off-policy data leads to biased estimates that can cause learning to diverge.</p>
+    </div>
+</section>
+
+<section id="importance-sampling">
+    <h2>Importance Sampling Ratios</h2>
+    <p>
+        The standard tool for correcting distribution mismatch is <strong>importance sampling</strong>. For each action, we compute the ratio of how likely the target policy would take that action versus the behavior policy:
+    </p>
+
+    <div class="math-block highlight">
+        $$\rho_t = \frac{\pi(a_t | s_t)}{\mu(a_t | s_t)}$$
+    </div>
+
+    <p>
+        This ratio tells us how to reweight observations:
+    </p>
+    <ul>
+        <li><strong>ρ > 1</strong>: Target policy prefers this action more than behavior → upweight</li>
+        <li><strong>ρ < 1</strong>: Target policy prefers this action less → downweight</li>
+        <li><strong>ρ = 1</strong>: Both policies equally likely → no correction needed</li>
+    </ul>
+</section>
+
+<section id="algorithms">
+    <h2>Three Approaches to Off-Policy Learning</h2>
+
+    <h3>1. One-Step TD (No Correction Needed)</h3>
+    <p>
+        The simplest approach uses only one-step bootstrapping:
+    </p>
+    <div class="math-block">
+        $$G_t^{(1)} = r_t + \gamma V(s_{t+1})$$
+    </div>
+    <p>
+        Since we bootstrap immediately, we don't need importance sampling for the value estimate (though we may need it for the policy gradient). This gives <strong>low variance</strong> but <strong>high bias</strong> since we rely entirely on our potentially inaccurate value function.
+    </p>
+
+    <h3>2. N-Step Returns with Full IS</h3>
+    <p>
+        To reduce bias, we can use actual rewards over multiple steps:
+    </p>
+    <div class="math-block">
+        $$G_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n V(s_{t+n})$$
+    </div>
+    <p>
+        But for off-policy learning, we must correct for the distribution mismatch by multiplying by the product of all importance ratios:
+    </p>
+    <div class="math-block highlight">
+        $$G_t^{IS} = \left(\prod_{k=0}^{n-1} \rho_{t+k}\right) \cdot G_t^{(n)}$$
+    </div>
+    <p>
+        <strong>The problem:</strong> This product can explode exponentially. If each ρ averages to 2, after 10 steps the correction factor is 2<sup>10</sup> = 1024. This causes <strong>massive variance</strong>.
+    </p>
+
+    <h3>3. Retrace(λ): The Safe Solution</h3>
+    <p>
+        Retrace truncates the importance ratios to prevent variance explosion while maintaining convergence guarantees:
+    </p>
+    <div class="math-block">
+        $$c_t = \lambda \cdot \min(1, \rho_t)$$
+    </div>
+    <p>
+        The key insight: by capping ratios at 1, we only <em>downweight</em> unlikely actions but never <em>upweight</em> beyond the observed frequency. The Retrace target becomes:
+    </p>
+    <div class="math-block highlight">
+        $$G_t^{ret} = Q(s_t, a_t) + \sum_{k=0}^{T-t-1} \gamma^k \left(\prod_{j=1}^{k} c_{t+j}\right) \delta_{t+k}$$
+    </div>
+    <p>
+        Or recursively (for implementation):
+    </p>
+    <div class="math-block">
+        $$G_t^{ret} = r_t + \gamma \left[ c_{t+1}(G_{t+1}^{ret} - Q(s_{t+1}, a_{t+1})) + V(s_{t+1}) \right]$$
+    </div>
+</section>
+
+<!-- Interactive Visualization -->
+<section class="viz-section" id="visualization">
+    <h2>Interactive Visualization</h2>
+    <p class="viz-description">
+        Explore how different algorithms handle off-policy data. Adjust the policy divergence to see how importance ratios affect each method.
+    </p>
+
+    <div class="policy-legend">
+        <div class="policy-indicator policy-target">
+            <span>π</span> Target Policy
+        </div>
+        <div class="policy-indicator policy-behavior">
+            <span>μ</span> Behavior Policy
+        </div>
+    </div>
+
+    <div class="algorithm-tabs">
+        <button class="algorithm-tab active" data-algo="td">1-Step TD</button>
+        <button class="algorithm-tab" data-algo="nstep">N-Step IS</button>
+        <button class="algorithm-tab" data-algo="retrace">Retrace(λ)</button>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>Policy Divergence</label>
+            <div class="control-value" id="divergence-display">Medium</div>
+            <div class="slider-container">
+                <input type="range" id="divergence-slider" min="0" max="2" step="1" value="1">
+            </div>
+        </div>
+        <div class="control-group" id="lambda-control">
+            <label>Lambda λ</label>
+            <div class="control-value" id="lambda-display">0.95</div>
+            <div class="slider-container">
+                <input type="range" id="lambda-slider" min="0" max="1" step="0.05" value="0.95">
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Discount γ</label>
+            <div class="control-value" id="gamma-display">0.99</div>
+            <div class="slider-container">
+                <input type="range" id="gamma-slider" min="0.9" max="1" step="0.01" value="0.99">
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Actions</label>
+            <div class="button-group">
+                <button class="secondary" id="reset-btn">Reset</button>
+                <button class="primary" id="animate-btn">Animate</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="variance-meter">
+        <div class="variance-label">Variance</div>
+        <div class="variance-bar">
+            <div class="variance-fill low" id="variance-fill" style="width: 20%"></div>
+        </div>
+        <div class="variance-value" id="variance-value">Low</div>
+    </div>
+
+    <div class="rollout-container">
+        <div class="rollout" id="rollout">
+            <!-- Generated by JavaScript -->
+        </div>
+    </div>
+
+    <div class="computation-rows" id="computation-rows">
+        <!-- Generated by JavaScript -->
+    </div>
+
+    <div id="product-display" style="display: none;">
+        <h4 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px;">IS Product for Target Computation</h4>
+        <div class="product-chain" id="product-chain">
+            <!-- Generated by JavaScript -->
+        </div>
+    </div>
+
+    <div class="step-log" id="step-log">
+        <div class="step-log-title">Computation Steps</div>
+        <div id="log-entries">
+        </div>
+    </div>
+</section>
+
+<section id="comparison">
+    <h2>Algorithm Comparison</h2>
+
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Method</th>
+                <th>Bias</th>
+                <th>Variance</th>
+                <th>Convergence</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>1-Step TD</strong></td>
+                <td><span class="badge badge-high">High</span></td>
+                <td><span class="badge badge-low">Low</span></td>
+                <td>Guaranteed</td>
+            </tr>
+            <tr>
+                <td><strong>N-Step Full IS</strong></td>
+                <td><span class="badge badge-low">Low</span></td>
+                <td><span class="badge badge-high">Explosive</span></td>
+                <td>Can diverge</td>
+            </tr>
+            <tr>
+                <td><strong>Retrace(λ)</strong></td>
+                <td><span class="badge badge-low">Low</span></td>
+                <td><span class="badge badge-low">Bounded</span></td>
+                <td>Guaranteed</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="lambda-spectrum">
+        <div class="spectrum-end left">
+            <h4>Full IS (n-step)</h4>
+            <div class="formula">ρ₀ × ρ₁ × ... × ρₙ</div>
+            <p>Unbiased but<br><span class="badge badge-high">Exponential variance</span></p>
+        </div>
+        <div class="spectrum-middle">
+            <div class="spectrum-arrow">⟷</div>
+            <p style="margin: 8px 0 0; font-size: 0.85rem;">Retrace(λ)</p>
+        </div>
+        <div class="spectrum-end right">
+            <h4>Truncated IS</h4>
+            <div class="formula">min(1,ρ₀) × min(1,ρ₁) × ...</div>
+            <p>Safe convergence<br><span class="badge badge-low">Bounded variance</span></p>
+        </div>
+    </div>
+</section>
+
+<section id="implementation">
+    <h2>Implementation</h2>
+    <p>
+        Here's a practical implementation of Retrace in Python:
+    </p>
+    <pre><code><span class="code-keyword">def</span> compute_retrace(rewards, q_values, values,
+                    target_probs, behavior_probs,
+                    gamma, lambda_):
+    <span class="code-comment">"""
+    Compute Retrace targets for off-policy learning.
+
+    Args:
+        rewards: [T] rewards r_0 to r_{T-1}
+        q_values: [T+1] Q(s_t, a_t) values
+        values: [T+1] V(s_t) = E[Q(s_t, a)] values
+        target_probs: [T] π(a_t|s_t) probabilities
+        behavior_probs: [T] μ(a_t|s_t) probabilities
+        gamma: discount factor
+        lambda_: trace decay parameter
+    """</span>
+    T = len(rewards)
+
+    <span class="code-comment"># Compute importance sampling ratios</span>
+    rhos = target_probs / behavior_probs
+
+    <span class="code-comment"># Truncate ratios (the key Retrace insight)</span>
+    cs = lambda_ * np.minimum(<span class="code-number">1.0</span>, rhos)
+
+    <span class="code-comment"># Compute TD errors</span>
+    deltas = rewards + gamma * values[<span class="code-number">1</span>:] - q_values[:-<span class="code-number">1</span>]
+
+    <span class="code-comment"># Backward pass to compute targets</span>
+    targets = np.zeros(T)
+    ret = <span class="code-number">0.0</span>
+
+    <span class="code-keyword">for</span> t <span class="code-keyword">in</span> reversed(range(T)):
+        <span class="code-comment"># Accumulate trace-weighted TD errors</span>
+        ret = deltas[t] + gamma * cs[t] * ret
+        targets[t] = q_values[t] + ret
+
+    <span class="code-keyword">return</span> targets</code></pre>
+</section>
+
+<section id="intuition">
+    <h2>Why Truncation Works</h2>
+
+    <div class="insight-box">
+        <h4>The Key Insight</h4>
+        <p>
+            By capping importance ratios at 1, Retrace only <em>reduces</em> the weight of actions the target policy dislikes, but never <em>amplifies</em> actions beyond their observed frequency. This prevents the variance explosion while still correcting for off-policy bias where it matters most.
+        </p>
+    </div>
+
+    <p>
+        When the target policy strongly prefers an action (ρ >> 1), full IS would massively upweight that transition. But we already observed that transition once—amplifying it further just adds noise. Retrace says: "trust what you observed, but downweight what the target policy wouldn't do."
+    </p>
+
+    <h3>Special Cases</h3>
+    <ul>
+        <li><strong>On-policy (π = μ):</strong> All ρ = 1, so c = λ, and Retrace becomes TD(λ)</li>
+        <li><strong>λ = 0:</strong> Retrace becomes one-step TD (no trace, maximum bias)</li>
+        <li><strong>λ = 1, π = μ:</strong> Equivalent to Monte Carlo returns</li>
+    </ul>
+</section>
+
+<section id="references">
+    <h2>References</h2>
+    <p>
+        Munos, R., Stepleton, T., Harutyunyan, A., & Bellemare, M. G. (2016). <em>Safe and Efficient Off-Policy Reinforcement Learning.</em> NeurIPS 2016.
+    </p>
+    <p>
+        Precup, D., Sutton, R. S., & Singh, S. (2000). <em>Eligibility Traces for Off-Policy Policy Evaluation.</em> ICML 2000.
+    </p>
+</section>
+
+<script>
+    // Configuration for different divergence levels
+    const divergenceConfigs = {
+        0: { // Low divergence (similar policies)
+            name: 'Low',
+            targetProbs: [0.7, 0.6, 0.5, 0.6, 0.7],
+            behaviorProbs: [0.6, 0.5, 0.5, 0.5, 0.6]
+        },
+        1: { // Medium divergence
+            name: 'Medium',
+            targetProbs: [0.8, 0.3, 0.7, 0.4, 0.9],
+            behaviorProbs: [0.4, 0.6, 0.3, 0.7, 0.3]
+        },
+        2: { // High divergence (very different policies)
+            name: 'High',
+            targetProbs: [0.9, 0.1, 0.85, 0.15, 0.95],
+            behaviorProbs: [0.2, 0.8, 0.2, 0.9, 0.15]
+        }
+    };
+
+    // Rollout data
+    const baseData = {
+        states: ['s₀', 's₁', 's₂', 's₃', 's₄', 's₅'],
+        qValues: [2.5, 3.1, 2.8, 4.2, 3.0, 0],
+        values: [2.8, 3.0, 3.2, 3.8, 2.5, 0],
+        rewards: [1.0, -0.5, 2.0, 0.5, -1.0],
+        actions: ['a₁', 'a₀', 'a₁', 'a₀', 'a₁']
+    };
+
+    let gamma = 0.99;
+    let lambda = 0.95;
+    let divergence = 1;
+    let currentAlgo = 'td';
+    let animationInProgress = false;
+
+    // DOM elements
+    const gammaSlider = document.getElementById('gamma-slider');
+    const lambdaSlider = document.getElementById('lambda-slider');
+    const divergenceSlider = document.getElementById('divergence-slider');
+    const gammaDisplay = document.getElementById('gamma-display');
+    const lambdaDisplay = document.getElementById('lambda-display');
+    const divergenceDisplay = document.getElementById('divergence-display');
+    const rolloutContainer = document.getElementById('rollout');
+    const computationRows = document.getElementById('computation-rows');
+    const logEntries = document.getElementById('log-entries');
+    const animateBtn = document.getElementById('animate-btn');
+    const resetBtn = document.getElementById('reset-btn');
+    const lambdaControl = document.getElementById('lambda-control');
+    const varianceFill = document.getElementById('variance-fill');
+    const varianceValue = document.getElementById('variance-value');
+    const productDisplay = document.getElementById('product-display');
+    const productChain = document.getElementById('product-chain');
+    const algoTabs = document.querySelectorAll('.algorithm-tab');
+
+    function getCurrentConfig() {
+        return divergenceConfigs[divergence];
+    }
+
+    function computeRatios() {
+        const config = getCurrentConfig();
+        return config.targetProbs.map((tp, i) => tp / config.behaviorProbs[i]);
+    }
+
+    function computeTruncatedRatios() {
+        const rhos = computeRatios();
+        return rhos.map(rho => lambda * Math.min(1, rho));
+    }
+
+    function computeTDErrors() {
+        const deltas = [];
+        for (let t = 0; t < baseData.rewards.length; t++) {
+            const delta = baseData.rewards[t] + gamma * baseData.values[t + 1] - baseData.qValues[t];
+            deltas.push(delta);
+        }
+        return deltas;
+    }
+
+    function computeTargets() {
+        const deltas = computeTDErrors();
+        const rhos = computeRatios();
+        const cs = computeTruncatedRatios();
+        const T = deltas.length;
+
+        if (currentAlgo === 'td') {
+            // 1-step TD: just r + γV(s')
+            return deltas.map((d, t) => baseData.qValues[t] + d);
+        } else if (currentAlgo === 'nstep') {
+            // N-step with full IS
+            const targets = [];
+            for (let t = 0; t < T; t++) {
+                let target = 0;
+                let isProduct = 1;
+                for (let k = t; k < T; k++) {
+                    if (k > t) isProduct *= rhos[k];
+                    target += isProduct * Math.pow(gamma, k - t) * deltas[k];
+                }
+                targets.push(baseData.qValues[t] + target);
+            }
+            return targets;
+        } else {
+            // Retrace
+            const targets = new Array(T).fill(0);
+            let ret = 0;
+            for (let t = T - 1; t >= 0; t--) {
+                ret = deltas[t] + gamma * cs[t] * ret;
+                targets[t] = baseData.qValues[t] + ret;
+            }
+            return targets;
+        }
+    }
+
+    function computeVariance() {
+        if (currentAlgo === 'td') return { level: 'low', percent: 15, label: 'Low' };
+
+        const rhos = computeRatios();
+
+        if (currentAlgo === 'nstep') {
+            const product = rhos.reduce((a, b) => a * b, 1);
+            if (product > 10) return { level: 'high', percent: 95, label: 'Explosive!' };
+            if (product > 3) return { level: 'high', percent: 80, label: 'Very High' };
+            if (product > 1.5) return { level: 'medium', percent: 60, label: 'High' };
+            return { level: 'medium', percent: 40, label: 'Moderate' };
+        } else {
+            const cs = computeTruncatedRatios();
+            const maxTrace = cs.reduce((a, b) => a * b, 1);
+            if (maxTrace > 0.5) return { level: 'low', percent: 30, label: 'Low' };
+            return { level: 'low', percent: 20, label: 'Very Low' };
+        }
+    }
+
+    function updateVarianceDisplay() {
+        const variance = computeVariance();
+        varianceFill.className = `variance-fill ${variance.level}`;
+        varianceFill.style.width = `${variance.percent}%`;
+        varianceValue.textContent = variance.label;
+        varianceValue.style.color = variance.level === 'high' ? 'var(--reward-negative)' :
+                                    variance.level === 'medium' ? 'var(--advantage-positive)' :
+                                    'var(--reward-positive)';
+    }
+
+    function renderRollout() {
+        const config = getCurrentConfig();
+        const rhos = computeRatios();
+        let html = '';
+
+        for (let t = 0; t < baseData.states.length; t++) {
+            html += `
+                <div class="timestep" data-t="${t}">
+                    <div class="state-node" id="state-${t}">${baseData.states[t]}</div>
+                    <div class="value-label">Q(s,a)</div>
+                    <div class="value">${baseData.qValues[t].toFixed(1)}</div>
+                    <div class="value-label" style="margin-top: 4px;">V(s)</div>
+                    <div class="value" style="color: var(--text-secondary);">${baseData.values[t].toFixed(1)}</div>
+                </div>
+            `;
+
+            if (t < baseData.rewards.length) {
+                const reward = baseData.rewards[t];
+                const rewardClass = reward >= 0 ? 'positive' : 'negative';
+                const rho = rhos[t];
+                const rhoClass = rho > 1.5 ? 'high' : rho < 0.7 ? 'low' : 'normal';
+
+                html += `
+                    <div class="transition-extended">
+                        <div class="arrow"></div>
+                        <div class="reward ${rewardClass}">${reward >= 0 ? '+' : ''}${reward.toFixed(1)}</div>
+                        <div class="reward-label">r${t}</div>
+                        <div class="action-label">${baseData.actions[t]}</div>
+                        <div class="ratio-display" style="margin-top: 12px;">
+                            <div class="ratio-fraction">
+                                <span class="ratio-numerator">π=${config.targetProbs[t].toFixed(1)}</span>
+                                <span class="ratio-denominator">μ=${config.behaviorProbs[t].toFixed(1)}</span>
+                            </div>
+                            <div class="ratio-value ${rhoClass}" id="rho-${t}">ρ=${rho.toFixed(2)}</div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        rolloutContainer.innerHTML = html;
+    }
+
+    function renderComputationRows() {
+        const deltas = computeTDErrors();
+        const rhos = computeRatios();
+        const cs = computeTruncatedRatios();
+        const targets = computeTargets();
+
+        let html = '';
+
+        // TD errors row
+        html += '<div class="computation-row"><div class="label">δ (TD)</div>';
+        for (let t = 0; t < deltas.length; t++) {
+            html += `
+                <div class="computation-cell">
+                    <span class="symbol">δ${t}</span>
+                    <span class="value td visible" id="td-${t}">${deltas[t].toFixed(3)}</span>
+                </div>
+            `;
+            if (t < deltas.length - 1) html += '<div class="spacer-cell"></div>';
+        }
+        html += '</div>';
+
+        // Show IS ratios row for n-step and retrace
+        if (currentAlgo !== 'td') {
+            html += '<div class="trace-row"><div class="label" style="min-width: 60px;">ρ (IS)</div>';
+            for (let t = 0; t < rhos.length; t++) {
+                const rhoClass = rhos[t] > 1.5 ? 'full' : 'truncated';
+                html += `
+                    <div class="trace-cell">
+                        <span class="trace-symbol">ρ${t}</span>
+                        <span class="trace-value ${rhoClass}" id="rho-val-${t}">${rhos[t].toFixed(2)}</span>
+                    </div>
+                `;
+                if (t < rhos.length - 1) html += '<div class="spacer-cell"></div>';
+            }
+            html += '</div>';
+        }
+
+        // Show truncated coefficients for retrace
+        if (currentAlgo === 'retrace') {
+            html += '<div class="trace-row"><div class="label" style="min-width: 60px;">c (trace)</div>';
+            for (let t = 0; t < cs.length; t++) {
+                const wasTruncated = rhos[t] > 1;
+                html += `
+                    <div class="trace-cell">
+                        <span class="trace-symbol">c${t}</span>
+                        <span class="trace-value truncated" id="c-${t}">${cs[t].toFixed(2)}</span>
+                        ${wasTruncated ? '<span class="truncate-indicator">capped</span>' : ''}
+                    </div>
+                `;
+                if (t < cs.length - 1) html += '<div class="spacer-cell"></div>';
+            }
+            html += '</div>';
+        }
+
+        // Target row
+        const targetLabel = currentAlgo === 'td' ? 'G (1-step)' :
+                          currentAlgo === 'nstep' ? 'G (n-step)' : 'G (retrace)';
+        html += `<div class="computation-row"><div class="label">${targetLabel}</div>`;
+        for (let t = 0; t < targets.length; t++) {
+            const gaeClass = targets[t] >= baseData.qValues[t] ? 'gae-positive' : 'gae-negative';
+            html += `
+                <div class="computation-cell">
+                    <span class="symbol">G${t}</span>
+                    <span class="value ${gaeClass} visible" id="target-${t}">${targets[t].toFixed(3)}</span>
+                </div>
+            `;
+            if (t < targets.length - 1) html += '<div class="spacer-cell"></div>';
+        }
+        html += '</div>';
+
+        computationRows.innerHTML = html;
+    }
+
+    function renderProductChain(upToIndex = -1) {
+        if (currentAlgo === 'td') {
+            productDisplay.style.display = 'none';
+            return;
+        }
+
+        productDisplay.style.display = 'block';
+        const rhos = computeRatios();
+        const cs = computeTruncatedRatios();
+        const useCs = currentAlgo === 'retrace';
+        const vals = useCs ? cs : rhos;
+
+        let html = '';
+        let product = 1;
+
+        for (let i = 0; i <= Math.min(upToIndex, vals.length - 1); i++) {
+            if (i > 0) html += '<span class="product-operator">×</span>';
+            const included = upToIndex < 0 || i <= upToIndex;
+            const val = vals[i];
+            product *= val;
+
+            const label = useCs ? `c${i}` : `ρ${i}`;
+            html += `<span class="product-term ${included ? 'included' : 'excluded'}">${label}=${val.toFixed(2)}</span>`;
+        }
+
+        if (upToIndex >= 0) {
+            html += `<span class="product-result">= ${product.toFixed(3)}</span>`;
+        }
+
+        productChain.innerHTML = html;
+    }
+
+    function updateLog() {
+        let html = '';
+
+        if (currentAlgo === 'td') {
+            html = `
+                <div class="log-entry visible">
+                    <span class="log-step">Formula:</span>
+                    <span class="log-formula">Gₜ = rₜ + γV(sₜ₊₁)</span>
+                </div>
+                <div class="log-entry visible">
+                    <span class="log-step">Note:</span>
+                    <span class="log-formula">No IS correction needed for 1-step</span>
+                </div>
+            `;
+        } else if (currentAlgo === 'nstep') {
+            html = `
+                <div class="log-entry visible">
+                    <span class="log-step">Formula:</span>
+                    <span class="log-formula">Gₜ = (ρₜ×ρₜ₊₁×...×ρₙ) × Σγᵏrₜ₊ₖ + γⁿV(sₙ)</span>
+                </div>
+                <div class="log-entry visible">
+                    <span class="log-step">Warning:</span>
+                    <span class="log-formula" style="color: var(--reward-negative);">Product of ratios can explode!</span>
+                </div>
+            `;
+        } else {
+            html = `
+                <div class="log-entry visible">
+                    <span class="log-step">Step 1:</span>
+                    <span class="log-formula">Compute cₜ = λ × min(1, ρₜ)</span>
+                </div>
+                <div class="log-entry visible">
+                    <span class="log-step">Step 2:</span>
+                    <span class="log-formula">Backward: Gₜ = rₜ + γ[cₜ₊₁(Gₜ₊₁ - Qₜ₊₁) + Vₜ₊₁]</span>
+                </div>
+                <div class="log-entry visible">
+                    <span class="log-step">Key:</span>
+                    <span class="log-formula" style="color: var(--reward-positive);">Truncation prevents variance explosion</span>
+                </div>
+            `;
+        }
+
+        logEntries.innerHTML = html;
+    }
+
+    async function animate() {
+        if (animationInProgress) return;
+        animationInProgress = true;
+        animateBtn.disabled = true;
+        resetBtn.disabled = true;
+
+        const deltas = computeTDErrors();
+        const rhos = computeRatios();
+        const cs = computeTruncatedRatios();
+        const T = deltas.length;
+
+        // Reset visibility
+        document.querySelectorAll('.computation-cell .value').forEach(el => {
+            el.classList.remove('visible');
+        });
+        document.querySelectorAll('.state-node').forEach(el => {
+            el.classList.remove('active', 'computed');
+        });
+
+        // Animate based on algorithm
+        if (currentAlgo === 'td') {
+            // Forward pass for TD
+            for (let t = 0; t < T; t++) {
+                document.getElementById(`state-${t}`).classList.add('active');
+                await sleep(200);
+
+                document.getElementById(`td-${t}`).classList.add('visible');
+                await sleep(200);
+
+                document.getElementById(`target-${t}`).classList.add('visible');
+                document.getElementById(`state-${t}`).classList.remove('active');
+                document.getElementById(`state-${t}`).classList.add('computed');
+                await sleep(300);
+            }
+        } else {
+            // Show TD errors first
+            for (let t = 0; t < T; t++) {
+                document.getElementById(`td-${t}`).classList.add('visible');
+                await sleep(100);
+            }
+            await sleep(300);
+
+            // Show ratios
+            for (let t = 0; t < T; t++) {
+                const rhoEl = document.getElementById(`rho-val-${t}`);
+                if (rhoEl) rhoEl.style.opacity = '1';
+                await sleep(100);
+            }
+            await sleep(300);
+
+            if (currentAlgo === 'retrace') {
+                // Show truncated coefficients
+                for (let t = 0; t < T; t++) {
+                    const cEl = document.getElementById(`c-${t}`);
+                    if (cEl) cEl.style.opacity = '1';
+                    await sleep(100);
+                }
+                await sleep(300);
+
+                // Backward pass
+                for (let t = T - 1; t >= 0; t--) {
+                    document.getElementById(`state-${t}`).classList.add('active');
+                    renderProductChain(T - 1 - t);
+                    await sleep(300);
+
+                    document.getElementById(`target-${t}`).classList.add('visible');
+                    document.getElementById(`state-${t}`).classList.remove('active');
+                    document.getElementById(`state-${t}`).classList.add('computed');
+                    await sleep(300);
+                }
+            } else {
+                // N-step: show product building up
+                for (let t = 0; t < T; t++) {
+                    document.getElementById(`state-${t}`).classList.add('active');
+                    renderProductChain(t);
+                    await sleep(400);
+
+                    document.getElementById(`target-${t}`).classList.add('visible');
+                    document.getElementById(`state-${t}`).classList.remove('active');
+                    document.getElementById(`state-${t}`).classList.add('computed');
+                    await sleep(300);
+                }
+            }
+        }
+
+        animationInProgress = false;
+        animateBtn.disabled = false;
+        resetBtn.disabled = false;
+    }
+
+    function reset() {
+        renderRollout();
+        renderComputationRows();
+        updateVarianceDisplay();
+        updateLog();
+        renderProductChain(-1);
+
+        // Show lambda control only for retrace
+        lambdaControl.style.display = currentAlgo === 'retrace' ? 'block' : 'none';
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // Event listeners
+    gammaSlider.addEventListener('input', (e) => {
+        gamma = parseFloat(e.target.value);
+        gammaDisplay.textContent = gamma.toFixed(2);
+        reset();
+    });
+
+    lambdaSlider.addEventListener('input', (e) => {
+        lambda = parseFloat(e.target.value);
+        lambdaDisplay.textContent = lambda.toFixed(2);
+        reset();
+    });
+
+    divergenceSlider.addEventListener('input', (e) => {
+        divergence = parseInt(e.target.value);
+        divergenceDisplay.textContent = getCurrentConfig().name;
+        reset();
+    });
+
+    algoTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            algoTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentAlgo = tab.dataset.algo;
+            reset();
+        });
+    });
+
+    animateBtn.addEventListener('click', animate);
+    resetBtn.addEventListener('click', reset);
+
+    // Initial render
+    reset();
+</script>
+
+      </div>
+    </div>
+  </div>
+</article>
+
+  </main>
+
+  <footer class="site-footer">
+  <div class="container">
+    <div class="footer-content">
+      <p>&copy; 2026 Mark Towers</p>
+      <div class="footer-links">
+        
+        <a href="https://github.com/pseudo-rnd-thoughts" target="_blank" rel="noopener">GitHub</a>
+        
+        
+        <a href="mailto:mark@anyscale.com">Email</a>
+        
+      </div>
+    </div>
+  </div>
+</footer>
+
+
+  <script src="/assets/js/main.js"></script>
+</body>
+</html>

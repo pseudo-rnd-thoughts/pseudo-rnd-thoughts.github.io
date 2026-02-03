@@ -1,0 +1,479 @@
+---
+layout: post
+title: "Generalized Advantage Estimation (GAE) Explained"
+date: 2026-01-31
+math: true
+excerpt: "A deep dive into GAE: the elegant solution for balancing bias and variance in policy gradient methods."
+---
+
+<section id="introduction">
+    <h2>The Advantage Estimation Problem</h2>
+    <p>
+        In policy gradient reinforcement learning, we need to estimate how much better an action is compared to the average &mdash; this is the <strong>advantage function</strong>. The challenge? We face a fundamental tradeoff between <strong>bias</strong> and <strong>variance</strong> in our estimates.
+    </p>
+    <p>
+        <strong>Generalized Advantage Estimation (GAE)</strong>, introduced by Schulman et al. (2016), provides an elegant family of estimators that smoothly interpolate between these extremes, giving practitioners a tunable parameter to find the sweet spot for their specific problem.
+    </p>
+</section>
+
+<section id="policy-gradient">
+    <h2>Connection to Policy Gradient Theorem</h2>
+    <p>
+        The Policy Gradient Theorem tells us how to compute the gradient of our objective:
+    </p>
+    <div class="math-block highlight">
+        \[\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot \Psi_t \right]\]
+    </div>
+    <p>
+        The term \(\Psi_t\) can be various quantities: total return, Q-value, or the <strong>advantage</strong>. Using the advantage \(A(s_t, a_t) = Q(s_t, a_t) - V(s_t)\) is preferred because subtracting the baseline \(V(s_t)\) reduces variance while keeping the gradient unbiased.
+    </p>
+    <div class="insight-box">
+        <h4>Key Insight</h4>
+        <p>The advantage tells us: "How much better was this action compared to what we expected?" Positive advantages indicate better-than-average actions; negative advantages indicate worse-than-average actions.</p>
+    </div>
+</section>
+
+<section id="bias-variance">
+    <h2>The Bias-Variance Tradeoff</h2>
+    <p>
+        There are two classical approaches to estimating the advantage, each with distinct tradeoffs:
+    </p>
+
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Method</th>
+                <th>Formula</th>
+                <th>Bias</th>
+                <th>Variance</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Monte Carlo</strong></td>
+                <td>\(\hat{A}_t = \sum_{k=0}^{\infty} \gamma^k r_{t+k} - V(s_t)\)</td>
+                <td><span class="badge badge-low">Unbiased</span></td>
+                <td><span class="badge badge-high">High</span></td>
+            </tr>
+            <tr>
+                <td><strong>TD(0) Error</strong></td>
+                <td>\(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\)</td>
+                <td><span class="badge badge-high">Biased*</span></td>
+                <td><span class="badge badge-low">Low</span></td>
+            </tr>
+        </tbody>
+    </table>
+    <p class="text-small">
+        *TD error is biased because it depends on the accuracy of our learned value function \(V\).
+    </p>
+
+    <div class="lambda-spectrum">
+        <div class="spectrum-end left">
+            <h4>\(\lambda = 0\)</h4>
+            <div class="formula">\(\hat{A}_t = \delta_t\)</div>
+            <p>Pure TD error<br><span class="badge badge-low">Low variance</span> <span class="badge badge-high">High bias</span></p>
+        </div>
+        <div class="spectrum-middle">
+            <div class="spectrum-arrow">\(\longleftrightarrow\)</div>
+            <p style="margin: 8px 0 0; font-size: 0.85rem;">GAE(\(\gamma, \lambda\))</p>
+        </div>
+        <div class="spectrum-end right">
+            <h4>\(\lambda = 1\)</h4>
+            <div class="formula">\(\hat{A}_t = \sum_k \gamma^k r_{t+k} - V(s_t)\)</div>
+            <p>Monte Carlo-like<br><span class="badge badge-high">High variance</span> <span class="badge badge-low">Low bias</span></p>
+        </div>
+    </div>
+</section>
+
+<section id="gae-formula">
+    <h2>The GAE Formula</h2>
+    <p>
+        GAE defines the advantage as an <strong>exponentially-weighted sum of TD errors</strong>:
+    </p>
+
+    <h3>Step 1: Compute TD Errors</h3>
+    <div class="math-block">
+        \[\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\]
+    </div>
+    <p>
+        Each TD error \(\delta_t\) represents a one-step estimate of the advantage: the reward received plus the discounted value of the next state, minus the value of the current state.
+    </p>
+
+    <h3>Step 2: Compute GAE (Exponentially-Weighted Sum)</h3>
+    <div class="math-block highlight">
+        \[\hat{A}_t^{\text{GAE}(\gamma, \lambda)} = \sum_{k=0}^{\infty} (\gamma \lambda)^k \delta_{t+k}\]
+    </div>
+    <p>
+        Expanding this sum:
+    </p>
+    <div class="math-block">
+        \[\hat{A}_t = \delta_t + (\gamma\lambda)\delta_{t+1} + (\gamma\lambda)^2\delta_{t+2} + \cdots\]
+    </div>
+
+    <h3>Recursive Formulation (For Implementation)</h3>
+    <p>
+        In practice, we compute GAE efficiently using a backward pass through the trajectory:
+    </p>
+    <div class="math-block highlight">
+        \[\hat{A}_t = \delta_t + \gamma \lambda \cdot \hat{A}_{t+1}\]
+    </div>
+    <p>
+        Starting from the last timestep (where \(\hat{A}_T = \delta_T\)) and working backwards, each advantage incorporates the TD error at that step plus a discounted, decayed version of future advantages.
+    </p>
+</section>
+
+<!-- Interactive Visualization -->
+<section class="viz-section" id="visualization">
+    <h2>Interactive Rollout Visualization</h2>
+    <p class="viz-description">Watch the backward computation unfold step by step. Adjust \(\gamma\) and \(\lambda\) to see how they affect the advantage estimates.</p>
+
+    <div class="controls">
+        <div class="control-group">
+            <label>Discount \(\gamma\)</label>
+            <div class="control-value" id="gamma-display">0.99</div>
+            <div class="slider-container">
+                <input type="range" id="gamma-slider" min="0.9" max="1" step="0.01" value="0.99">
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Lambda \(\lambda\)</label>
+            <div class="control-value" id="lambda-display">0.95</div>
+            <div class="slider-container">
+                <input type="range" id="lambda-slider" min="0" max="1" step="0.05" value="0.95">
+            </div>
+        </div>
+        <div class="control-group">
+            <label>Actions</label>
+            <div class="button-group">
+                <button class="secondary" id="reset-btn">Reset</button>
+                <button class="primary" id="animate-btn">Animate</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="rollout-container">
+        <div class="rollout" id="rollout">
+            <!-- Generated by JavaScript -->
+        </div>
+    </div>
+
+    <div class="computation-rows" id="computation-rows">
+        <!-- Generated by JavaScript -->
+    </div>
+
+    <div class="step-log" id="step-log">
+        <div class="step-log-title">Computation Steps</div>
+        <div id="log-entries">
+            <div class="log-entry visible">
+                <span class="log-step">Step 1:</span>
+                <span class="log-formula">Compute TD errors \(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\)</span>
+            </div>
+            <div class="log-entry visible">
+                <span class="log-step">Step 2:</span>
+                <span class="log-formula">Compute GAE backward: \(\hat{A}_t = \delta_t + \gamma\lambda\hat{A}_{t+1}\)</span>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="implementation">
+    <h2>Implementation</h2>
+    <p>
+        Here's how GAE is typically implemented in practice. The key insight is computing advantages in reverse order:
+    </p>
+    <pre><code><span class="code-keyword">def</span> compute_gae(rewards, values, gamma, lambda_):
+    <span class="code-comment"># values has length T+1 (includes bootstrap value)</span>
+    <span class="code-comment"># rewards has length T</span>
+    T = len(rewards)
+    advantages = [<span class="code-number">0</span>] * T
+    gae = <span class="code-number">0</span>
+
+    <span class="code-comment"># Backward pass through trajectory</span>
+    <span class="code-keyword">for</span> t <span class="code-keyword">in</span> reversed(range(T)):
+        <span class="code-comment"># TD error: r_t + γV(s_{t+1}) - V(s_t)</span>
+        delta = rewards[t] + gamma * values[t + <span class="code-number">1</span>] - values[t]
+
+        <span class="code-comment"># GAE recursive formula: A_t = δ_t + γλA_{t+1}</span>
+        gae = delta + gamma * lambda_ * gae
+        advantages[t] = gae
+
+    <span class="code-keyword">return</span> advantages</code></pre>
+</section>
+
+<section id="practical">
+    <h2>Practical Considerations</h2>
+
+    <h3>Choosing \(\lambda\)</h3>
+    <p>
+        In practice, \(\lambda\) values between <strong>0.9 and 0.99</strong> work well for most problems. The PPO paper uses \(\lambda = 0.95\) as a default. Higher values are better when your value function is inaccurate; lower values help when you have a good value function and want to reduce variance.
+    </p>
+
+    <h3>Interaction with \(\gamma\)</h3>
+    <p>
+        The effective discount for the advantage weights is \(\gamma\lambda\). Even with \(\lambda = 1\), using \(\gamma < 1\) still provides some exponential decay. Common choices are \(\gamma = 0.99\) with \(\lambda = 0.95\), giving an effective decay of \(0.99 \times 0.95 = 0.9405\).
+    </p>
+
+    <div class="insight-box">
+        <h4>Why GAE Works</h4>
+        <p>
+            GAE succeeds because it balances two sources of error: (1) bias from relying on an imperfect value function, and (2) variance from using noisy sampled returns. By tuning \(\lambda\), you can find the optimal tradeoff for your specific problem and value function quality.
+        </p>
+    </div>
+</section>
+
+<section id="references">
+    <h2>References</h2>
+    <p>
+        Schulman, J., Moritz, P., Levine, S., Jordan, M., & Abbeel, P. (2016). <em>High-Dimensional Continuous Control Using Generalized Advantage Estimation.</em> ICLR 2016.
+    </p>
+</section>
+
+<script>
+    // Rollout data
+    const rolloutData = {
+        states: ['s₀', 's₁', 's₂', 's₃', 's₄', 's₅'],
+        values: [2.5, 3.1, 2.8, 4.2, 3.0, 0], // V(s_5) = 0 (terminal)
+        rewards: [1.0, -0.5, 2.0, 0.5, -1.0]  // r_0 to r_4
+    };
+
+    let gamma = 0.99;
+    let lambda = 0.95;
+    let animationInProgress = false;
+
+    // DOM elements
+    const gammaSlider = document.getElementById('gamma-slider');
+    const lambdaSlider = document.getElementById('lambda-slider');
+    const gammaDisplay = document.getElementById('gamma-display');
+    const lambdaDisplay = document.getElementById('lambda-display');
+    const rolloutContainer = document.getElementById('rollout');
+    const computationRows = document.getElementById('computation-rows');
+    const logEntries = document.getElementById('log-entries');
+    const animateBtn = document.getElementById('animate-btn');
+    const resetBtn = document.getElementById('reset-btn');
+
+    // Compute TD errors
+    function computeTDErrors() {
+        const deltas = [];
+        for (let t = 0; t < rolloutData.rewards.length; t++) {
+            const delta = rolloutData.rewards[t] + gamma * rolloutData.values[t + 1] - rolloutData.values[t];
+            deltas.push(delta);
+        }
+        return deltas;
+    }
+
+    // Compute GAE
+    function computeGAE(deltas) {
+        const advantages = new Array(deltas.length).fill(0);
+        let gae = 0;
+        for (let t = deltas.length - 1; t >= 0; t--) {
+            gae = deltas[t] + gamma * lambda * gae;
+            advantages[t] = gae;
+        }
+        return advantages;
+    }
+
+    // Render rollout visualization
+    function renderRollout() {
+        let html = '';
+
+        for (let t = 0; t < rolloutData.states.length; t++) {
+            // State node
+            html += `
+                <div class="timestep" data-t="${t}">
+                    <div class="state-node" id="state-${t}">${rolloutData.states[t]}</div>
+                    <div class="value-label">V(${rolloutData.states[t]})</div>
+                    <div class="value">${rolloutData.values[t].toFixed(1)}</div>
+                </div>
+            `;
+
+            // Transition arrow and reward (if not last state)
+            if (t < rolloutData.rewards.length) {
+                const reward = rolloutData.rewards[t];
+                const rewardClass = reward >= 0 ? 'positive' : 'negative';
+                html += `
+                    <div class="transition">
+                        <div class="arrow"></div>
+                        <div class="reward ${rewardClass}">${reward >= 0 ? '+' : ''}${reward.toFixed(1)}</div>
+                        <div class="reward-label">r${t}</div>
+                    </div>
+                `;
+            }
+        }
+
+        rolloutContainer.innerHTML = html;
+    }
+
+    // Render computation rows
+    function renderComputationRows() {
+        const deltas = computeTDErrors();
+        const advantages = computeGAE(deltas);
+
+        let html = '';
+
+        // TD errors row
+        html += '<div class="computation-row" id="td-row"><div class="label">TD Error</div>';
+        for (let t = 0; t < deltas.length; t++) {
+            html += `
+                <div class="computation-cell">
+                    <span class="symbol">δ${t}</span>
+                    <span class="value td" id="td-${t}">${deltas[t].toFixed(3)}</span>
+                </div>
+            `;
+            if (t < deltas.length - 1) {
+                html += '<div class="spacer-cell"></div>';
+            }
+        }
+        html += '</div>';
+
+        // GAE row
+        html += '<div class="computation-row" id="gae-row"><div class="label">GAE</div>';
+        for (let t = 0; t < advantages.length; t++) {
+            const gaeClass = advantages[t] >= 0 ? 'gae-positive' : 'gae-negative';
+            html += `
+                <div class="computation-cell">
+                    <span class="symbol">Â${t}</span>
+                    <span class="value ${gaeClass}" id="gae-${t}">${advantages[t].toFixed(3)}</span>
+                </div>
+            `;
+            if (t < advantages.length - 1) {
+                html += '<div class="spacer-cell"></div>';
+            }
+        }
+        html += '</div>';
+
+        computationRows.innerHTML = html;
+    }
+
+    // Animation
+    async function animate() {
+        if (animationInProgress) return;
+        animationInProgress = true;
+        animateBtn.disabled = true;
+        resetBtn.disabled = true;
+
+        const deltas = computeTDErrors();
+        const advantages = computeGAE(deltas);
+
+        // Reset visibility
+        document.querySelectorAll('.computation-cell .value').forEach(el => {
+            el.classList.remove('visible');
+        });
+        document.querySelectorAll('.state-node').forEach(el => {
+            el.classList.remove('active', 'computed');
+        });
+
+        // Clear previous log entries (keep the first two)
+        const existingEntries = logEntries.querySelectorAll('.log-entry');
+        existingEntries.forEach((entry, i) => {
+            if (i >= 2) entry.remove();
+        });
+
+        // Animate TD errors (forward)
+        for (let t = 0; t < deltas.length; t++) {
+            const stateNode = document.getElementById(`state-${t}`);
+            stateNode.classList.add('active');
+
+            await sleep(300);
+
+            const tdValue = document.getElementById(`td-${t}`);
+            tdValue.classList.add('visible');
+
+            stateNode.classList.remove('active');
+            await sleep(200);
+        }
+
+        await sleep(500);
+
+        // Animate GAE (backward)
+        let gae = 0;
+        for (let t = deltas.length - 1; t >= 0; t--) {
+            const stateNode = document.getElementById(`state-${t}`);
+            stateNode.classList.add('active');
+
+            // Add log entry
+            const prevGae = gae;
+            gae = deltas[t] + gamma * lambda * gae;
+
+            let logHtml;
+            if (t === deltas.length - 1) {
+                logHtml = `<span class="log-step">t=${t}:</span> <span class="log-formula">Â${t} = δ${t} = </span><span class="log-result">${advantages[t].toFixed(3)}</span>`;
+            } else {
+                logHtml = `<span class="log-step">t=${t}:</span> <span class="log-formula">Â${t} = ${deltas[t].toFixed(3)} + ${gamma}×${lambda}×${prevGae.toFixed(3)} = </span><span class="log-result">${advantages[t].toFixed(3)}</span>`;
+            }
+
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerHTML = logHtml;
+            logEntries.appendChild(logEntry);
+
+            await sleep(100);
+            logEntry.classList.add('visible');
+
+            await sleep(300);
+
+            const gaeValue = document.getElementById(`gae-${t}`);
+            gaeValue.classList.add('visible');
+
+            stateNode.classList.remove('active');
+            stateNode.classList.add('computed');
+
+            await sleep(400);
+        }
+
+        animationInProgress = false;
+        animateBtn.disabled = false;
+        resetBtn.disabled = false;
+    }
+
+    // Reset visualization
+    function reset() {
+        renderRollout();
+        renderComputationRows();
+
+        // Reset log
+        logEntries.innerHTML = `
+            <div class="log-entry visible">
+                <span class="log-step">Step 1:</span>
+                <span class="log-formula">Compute TD errors δₜ = rₜ + γV(sₜ₊₁) - V(sₜ)</span>
+            </div>
+            <div class="log-entry visible">
+                <span class="log-step">Step 2:</span>
+                <span class="log-formula">Compute GAE backward: Âₜ = δₜ + γλÂₜ₊₁</span>
+            </div>
+        `;
+
+        // Show all values immediately
+        document.querySelectorAll('.computation-cell .value').forEach(el => {
+            el.classList.add('visible');
+        });
+    }
+
+    function sleep(ms) {
+        return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    // Event listeners
+    gammaSlider.addEventListener('input', (e) => {
+        gamma = parseFloat(e.target.value);
+        gammaDisplay.textContent = gamma.toFixed(2);
+        renderComputationRows();
+        document.querySelectorAll('.computation-cell .value').forEach(el => {
+            el.classList.add('visible');
+        });
+    });
+
+    lambdaSlider.addEventListener('input', (e) => {
+        lambda = parseFloat(e.target.value);
+        lambdaDisplay.textContent = lambda.toFixed(2);
+        renderComputationRows();
+        document.querySelectorAll('.computation-cell .value').forEach(el => {
+            el.classList.add('visible');
+        });
+    });
+
+    animateBtn.addEventListener('click', animate);
+    resetBtn.addEventListener('click', reset);
+
+    // Initial render
+    reset();
+</script>

@@ -1,0 +1,56 @@
+// Color palette - Dark theme with accents
+:root {
+  // Backgrounds
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-tertiary: #21262d;
+
+  // Text
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+
+  // Primary accent - Teal
+  --accent-primary: #4ecdc4;
+  --accent-primary-dim: rgba(78, 205, 196, 0.3);
+  --accent-primary-glow: rgba(78, 205, 196, 0.5);
+
+  // Accents - customize these colors
+  --accent-title: #e6edf3;  // Titles use primary text color, not accent
+  --accent-link: #4ecdc4;
+  --accent-link-hover: #a8edea;
+  --accent-border: #30363d;
+  --accent-border-highlight: #4ecdc4;
+  --accent-code: #ff7b72;
+  --accent-code-bg: #1a1f25;
+
+  // Additional accents for variety
+  --accent-green: #7ee787;
+  --accent-purple: #d2a8ff;
+  --accent-yellow: #e3b341;
+  --accent-orange: #ffa657;
+  --accent-red: #f97583;
+  --accent-blue: #a5d6ff;
+
+  // Typography
+  --font-heading: 'Newsreader', Georgia, serif;
+  --font-body: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  // Spacing
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+  --spacing-2xl: 3rem;
+  --spacing-3xl: 4rem;
+
+  // Layout
+  --container-max: 1200px;
+  --content-max: 800px;
+
+  // Transitions
+  --transition-fast: 150ms ease;
+  --transition-base: 250ms ease;
+}

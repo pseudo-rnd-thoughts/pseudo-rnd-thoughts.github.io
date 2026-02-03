@@ -1,0 +1,55 @@
+# Site settings
+title: Mark Towers
+description: Reinforcement Learning Engineer, Open Source Maintainer, PhD in Explainable RL
+url: "https://pseudorndthoughts.github.io"
+baseurl: ""
+
+# Author
+author:
+  name: Mark Towers
+  email: mark@anyscale.com
+  github: pseudo-rnd-thoughts
+  # Add more social links as needed
+  # twitter: username
+  # linkedin: username
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+permalink: /blog/:title/
+
+# Sass settings
+sass:
+  style: compressed
+  sass_dir: _sass
+
+# Exclude from build
+exclude:
+  - PLAN.md
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - .idea
+  - .venv
+
+# Collections (if needed later)
+# collections:
+#   projects:
+#     output: true
+
+# Default front matter
+defaults:
+  - scope:
+      path: ""
+      type: "posts"
+    values:
+      layout: "post"
+  - scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "page"
+
+# Plugins (GitHub Pages compatible)
+plugins:
+  - jekyll-seo-tag

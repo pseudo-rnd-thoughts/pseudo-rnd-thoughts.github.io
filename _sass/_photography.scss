@@ -1,5 +1,10 @@
 // Photography page - Masonry layout
 
+// Use full container width for photography gallery
+.page-content:has(.masonry-grid) {
+  max-width: 100%;
+}
+
 .photography-intro {
   max-width: 600px;
   margin-bottom: var(--spacing-2xl);

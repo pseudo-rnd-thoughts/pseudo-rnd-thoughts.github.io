@@ -3,16 +3,18 @@ layout: page
 title: null
 ---
 
-# Hi, I'm Mark
-
-(Add photo)
-
-I'm an RL Engineer at [Anyscale](https://www.anyscale.com/), working on [RLlib](https://docs.ray.io/en/latest/rllib/index.html) enabling the scaling of reinforcement learning agents from research to production.
-
-In my free time, I led maintenance of [Gymnasium](https://github.com/Farama-Foundation/Gymnasium) & [Gym](https://github.com/openai/gym), the standard APIs powering RL research worldwide, and a core team member at the [Farama Foundation](https://farama.org/).
-Recently, I've branched out into Jax-first RL, working to build [Vamos](https://github.com/pseudo-rnd-thoughts/vamos) and [CleanJaxRL](to dolink), a next generation RL API and suite of easily readable RL training algorithms respectively. 
-
-In 2025, I completed my [PhD](thesis) in Explainable RL at the University of Southampton, exploring how to explain agents' decision-making about their future intentions and still have an active interest in RL and AI research.
+<div class="bio-section">
+  <div class="bio-photo">
+    <img src="{{ '/assets/images/IMG_2629.jpeg' | relative_url }}" alt="Mark Towers">
+  </div>
+  <div class="bio-content">
+    <h1>Hi, I'm Mark</h1>
+    <p class="bio-tagline">Reinforcement learning researcher with a PhD</p>
+    <p>Currently, I'm a Software Engineer at <a href="https://www.anyscale.com/">Anyscale</a>, working on <a href="https://docs.ray.io/en/latest/rllib/index.html">RLlib</a> helping to scale the training reinforcement learning agents for real-world problems.</p>
+    <p>In my free time, I lead maintenance of <a href="https://github.com/Farama-Foundation/Gymnasium">Gymnasium</a> & <a href="https://github.com/openai/gym">Gym</a>, the standard APIs powering RL research worldwide, and am a core team member at the <a href="https://farama.org/">Farama Foundation</a>.</p>
+    <p>In 2025, I completed a <a href="https://eprints.soton.ac.uk/502074/1/archival_phd_thesis.pdf">PhD</a> in Explainable RL at the University of Southampton, resulting in three published papers on explaining agents' decision-making.</p>
+  </div>
+</div>
 
 ## Selected Projects
 

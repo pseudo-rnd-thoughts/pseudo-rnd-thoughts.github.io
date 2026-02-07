@@ -58,7 +58,8 @@
 
 // Page layout
 .page-header {
-  margin-bottom: var(--spacing-2xl);
+  max-width: var(--content-max);
+  margin: 0 auto var(--spacing-2xl);
 
   h1 {
     margin-bottom: var(--spacing-sm);
@@ -67,6 +68,7 @@
 
 .page-content {
   max-width: var(--content-max);
+  margin: 0 auto;
 }
 
 // Post layout
@@ -98,6 +100,7 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--spacing-2xl);
+  min-width: 0;
 
   @media (min-width: 1024px) {
     grid-template-columns: 200px 1fr;
@@ -165,7 +168,7 @@
 }
 
 .post-item {
-  padding: var(--spacing-lg) 0;
+  padding: var(--spacing-md) 0;
   border-bottom: 1px solid var(--accent-border);
 
   &:last-child {
@@ -175,7 +178,7 @@
 
 .post-item-title {
   font-size: 1.25rem;
-  margin-bottom: var(--spacing-xs);
+  margin: 0 0 var(--spacing-xs);
 
   a {
     color: var(--text-primary);

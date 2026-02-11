@@ -1,17 +1,17 @@
 # Site settings
 title: Mark Towers
 description: Reinforcement Learning Engineer, Open Source Maintainer, PhD in Explainable RL
-url: "https://pseudorndthoughts.github.io"
+url: "https://pseudo-rnd-thoughts.github.io"
 baseurl: ""
 
 # Author
 author:
   name: Mark Towers
-  email: mark@anyscale.com
+  email: mark.m.towers@gmail.com
   github: pseudo-rnd-thoughts
   # Add more social links as needed
   # twitter: username
-  # linkedin: username
+  linkedin: markttowers
 
 # Build settings
 markdown: kramdown
@@ -30,7 +30,6 @@ exclude:
   - Gemfile
   - Gemfile.lock
   - .idea
-  - .venv
 
 # Collections (if needed later)
 # collections:

@@ -3,41 +3,44 @@ layout: post
 title: "Generalized Advantage Estimation (GAE) Explained"
 date: 2026-01-31
 math: true
-excerpt: "A deep dive into GAE: the elegant solution for balancing bias and variance in policy gradient methods."
+excerpt: "How does GAE work? What does it achieve?"
 ---
 
-<section id="introduction">
-    <h2>The Advantage Estimation Problem</h2>
-    <p>
-        In policy gradient reinforcement learning, we need to estimate how much better an action is compared to the average &mdash; this is the <strong>advantage function</strong>. The challenge? We face a fundamental tradeoff between <strong>bias</strong> and <strong>variance</strong> in our estimates.
-    </p>
-    <p>
-        <strong>Generalized Advantage Estimation (GAE)</strong>, introduced by Schulman et al. (2016), provides an elegant family of estimators that smoothly interpolate between these extremes, giving practitioners a tunable parameter to find the sweet spot for their specific problem.
-    </p>
-</section>
-
 <section id="policy-gradient">
-    <h2>Connection to Policy Gradient Theorem</h2>
+    <h2>How Do We Improve a Policy?</h2>
     <p>
-        The Policy Gradient Theorem tells us how to compute the gradient of our objective:
+        Suppose we have a policy and roll it out, collecting states, actions, and rewards. Some actions worked out, increasing our return, and others didn't. To improve, we want to increase the likeliness of taking the "good" actions in the future, and the "bad" actions less likely. But how do we turn that into a gradient we can backpropagate?
+    </p>
+    <p>
+        The Policy Gradient Theorem gives us the answer. For each action in our rollout, we multiply two things together: the direction that makes the action more likely, and a score for how good the action was. Summing over all timesteps gives us the gradient of our expected return:
+    </p>
+    <div class="math-block">
+        \[\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot A_t \right]\]
+    </div>
+    <p>
+        The first term, \(\nabla_\theta \log \pi_\theta(a_t | s_t)\), points in the direction that increases the probability of action \(a_t\). The second term, \(A_t\), is the advantage representing how much better this action was compared to what the policy would normally do from that state:
     </p>
     <div class="math-block highlight">
-        \[\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot \Psi_t \right]\]
+        \[A(s_t, a_t) = Q(s_t, a_t) - V(s_t)\]
     </div>
     <p>
-        The term \(\Psi_t\) can be various quantities: total return, Q-value, or the <strong>advantage</strong>. Using the advantage \(A(s_t, a_t) = Q(s_t, a_t) - V(s_t)\) is preferred because subtracting the baseline \(V(s_t)\) reduces variance while keeping the gradient unbiased.
+        \(Q(s_t, a_t)\) is the expected return from taking action \(a_t\) in state \(s_t\), and \(V(s_t) = \mathbb{E}_{a \sim \pi}[Q(s_t, a)]\) is the expected return averaged over all actions the policy might take. Positive advantage means "do more of this", negative means "do less".
     </p>
-    <div class="insight-box">
-        <h4>Key Insight</h4>
-        <p>The advantage tells us: "How much better was this action compared to what we expected?" Positive advantages indicate better-than-average actions; negative advantages indicate worse-than-average actions.</p>
-    </div>
 </section>
 
 <section id="bias-variance">
-    <h2>The Bias-Variance Tradeoff</h2>
+    <h2>The Estimation Problem: Bias vs Variance</h2>
     <p>
-        There are two classical approaches to estimating the advantage, each with distinct tradeoffs:
+        Computing the advantage requires comparing what rewards we actually received in the rollout (\(\sum_{k=0}^{\infty} \gamma^k r_{t+k}\)) against what rewards we expected to receive (\(V(s_t)\)). The quality of our advantage estimate depends entirely on how we estimate this expected value, and there are two classical approaches:
     </p>
+    <ul>
+        <li>
+            <span class="text-highlight">Monte Carlo</span> only uses the rewards collected in the rollout for the Q-value target ensuring that it correct on average (i.e., unbiased) but each rollout's rewards are noisy (from the randomness in the policy and environment) means that different rollouts give very different totals, resulting in high variance.
+        </li>
+        <li>
+            <span class="text-highlight">Temporal Difference (TD) Error</span> replaces the future rewards after \(t+1\) with estimate of their expected sum \(V(s_{t+1})\). This compresses all that noise across rollouts into a stable, deterministic output, giving low variance. But if the learned \(V\) is inaccurate or systematically shifted from the correct scale it will be <strong>biased</strong>.
+        </li>
+    </ul>
 
     <table class="comparison-table">
         <thead>
@@ -51,80 +54,68 @@ excerpt: "A deep dive into GAE: the elegant solution for balancing bias and vari
         <tbody>
             <tr>
                 <td><strong>Monte Carlo</strong></td>
-                <td>\(\hat{A}_t = \sum_{k=0}^{\infty} \gamma^k r_{t+k} - V(s_t)\)</td>
+                <td>\(A_t = \sum_{k=0}^{\infty} \gamma^k r_{t+k} - V(s_t)\)</td>
                 <td><span class="badge badge-low">Unbiased</span></td>
                 <td><span class="badge badge-high">High</span></td>
             </tr>
             <tr>
-                <td><strong>TD(0) Error</strong></td>
+                <td><strong>TD Error</strong></td>
                 <td>\(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\)</td>
-                <td><span class="badge badge-high">Biased*</span></td>
+                <td><span class="badge badge-high">Biased</span></td>
                 <td><span class="badge badge-low">Low</span></td>
             </tr>
         </tbody>
     </table>
-    <p class="text-small">
-        *TD error is biased because it depends on the accuracy of our learned value function \(V\).
+</section>
+
+<section id="gae">
+    <h2>GAE: Balancing the Tradeoff</h2>
+    <p>
+        <strong>Generalized Advantage Estimation (GAE)</strong>, introduced by Schulman et al. (2016), provides a solution to the trade-off between the variance and bias of Monte Carlo and TD Error. It is parameterized by \(\lambda \in [0, 1]\) which controls how much we lean towards TD (low variance, higher bias) or Monte Carlo (unbiased, higher variance):
     </p>
 
     <div class="lambda-spectrum">
         <div class="spectrum-end left">
             <h4>\(\lambda = 0\)</h4>
-            <div class="formula">\(\hat{A}_t = \delta_t\)</div>
+            <div class="formula">\(A_t = \delta_t\)</div>
             <p>Pure TD error<br><span class="badge badge-low">Low variance</span> <span class="badge badge-high">High bias</span></p>
         </div>
         <div class="spectrum-middle">
             <div class="spectrum-arrow">\(\longleftrightarrow\)</div>
-            <p style="margin: 8px 0 0; font-size: 0.85rem;">GAE(\(\gamma, \lambda\))</p>
+            <p style="margin: 8px 0 0; font-size: 0.85rem;">GAE(\(\lambda\))</p>
         </div>
         <div class="spectrum-end right">
             <h4>\(\lambda = 1\)</h4>
-            <div class="formula">\(\hat{A}_t = \sum_k \gamma^k r_{t+k} - V(s_t)\)</div>
+            <div class="formula">\(A_t = \sum_k \gamma^k r_{t+k} - V(s_t)\)</div>
             <p>Monte Carlo-like<br><span class="badge badge-high">High variance</span> <span class="badge badge-low">Low bias</span></p>
         </div>
     </div>
-</section>
 
-<section id="gae-formula">
-    <h2>The GAE Formula</h2>
     <p>
-        GAE defines the advantage as an <strong>exponentially-weighted sum of TD errors</strong>:
+        The key insight of GAE is to combine TD errors from multiple time horizons. Instead of using just the immediate 1-step TD error (which is biased but stable) or the full Monte Carlo return (which is unbiased but noisy), GAE takes a weighted average of all future TD errors. The parameter \(\lambda\) controls how quickly we discount future errors: with \(\lambda = 0\), we only use the immediate error, while \(\lambda = 1\) uses all future errors equally, recovering something close to Monte Carlo.
     </p>
 
-    <h3>Step 1: Compute TD Errors</h3>
-    <div class="math-block">
-        \[\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\]
-    </div>
+    <h3>GAE Formula</h3>
     <p>
-        Each TD error \(\delta_t\) represents a one-step estimate of the advantage: the reward received plus the discounted value of the next state, minus the value of the current state.
-    </p>
-
-    <h3>Step 2: Compute GAE (Exponentially-Weighted Sum)</h3>
-    <div class="math-block highlight">
-        \[\hat{A}_t^{\text{GAE}(\gamma, \lambda)} = \sum_{k=0}^{\infty} (\gamma \lambda)^k \delta_{t+k}\]
-    </div>
-    <p>
-        Expanding this sum:
-    </p>
-    <div class="math-block">
-        \[\hat{A}_t = \delta_t + (\gamma\lambda)\delta_{t+1} + (\gamma\lambda)^2\delta_{t+2} + \cdots\]
-    </div>
-
-    <h3>Recursive Formulation (For Implementation)</h3>
-    <p>
-        In practice, we compute GAE efficiently using a backward pass through the trajectory:
+        GAE takes an <strong>exponentially-weighted sum of TD errors</strong> \(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\), with weights decaying by \(\gamma\lambda\) at each step:
     </p>
     <div class="math-block highlight">
-        \[\hat{A}_t = \delta_t + \gamma \lambda \cdot \hat{A}_{t+1}\]
+        \[A_t^{\text{GAE}(\gamma, \lambda)} = \sum_{k=0}^{\infty} (\gamma \lambda)^k \delta_{t+k}\]
     </div>
     <p>
-        Starting from the last timestep (where \(\hat{A}_T = \delta_T\)) and working backwards, each advantage incorporates the TD error at that step plus a discounted, decayed version of future advantages.
+        In practice, we compute this efficiently using a backward pass through the trajectory. Starting from the last timestep (where \(A_T = \delta_T\)) and working backwards:
+    </p>
+    <div class="math-block">
+        \[A_t = \delta_t + \gamma \lambda \cdot A_{t+1}\]
+    </div>
+    <p>
+        Each advantage incorporates the TD error at that step plus a discounted, decayed version of future advantages. This is exactly what you saw in the visualisation above.
     </p>
 </section>
 
-<!-- Interactive Visualization -->
-<section class="viz-section" id="visualization">
-    <h2>Interactive Rollout Visualization</h2>
+<!-- Interactive visualisation -->
+<section class="viz-section" id="visualisation">
+    <h2>Interactive Rollout Visualisation</h2>
     <p class="viz-description">Watch the backward computation unfold step by step. Adjust \(\gamma\) and \(\lambda\) to see how they affect the advantage estimates.</p>
 
     <div class="controls">
@@ -155,10 +146,9 @@ excerpt: "A deep dive into GAE: the elegant solution for balancing bias and vari
         <div class="rollout" id="rollout">
             <!-- Generated by JavaScript -->
         </div>
-    </div>
-
-    <div class="computation-rows" id="computation-rows">
-        <!-- Generated by JavaScript -->
+        <div class="computation-rows" id="computation-rows">
+            <!-- Generated by JavaScript -->
+        </div>
     </div>
 
     <div class="step-log" id="step-log">
@@ -170,7 +160,7 @@ excerpt: "A deep dive into GAE: the elegant solution for balancing bias and vari
             </div>
             <div class="log-entry visible">
                 <span class="log-step">Step 2:</span>
-                <span class="log-formula">Compute GAE backward: \(\hat{A}_t = \delta_t + \gamma\lambda\hat{A}_{t+1}\)</span>
+                <span class="log-formula">Compute GAE backward: \(A_t = \delta_t + \gamma\lambda A_{t+1}\)</span>
             </div>
         </div>
     </div>
@@ -179,25 +169,40 @@ excerpt: "A deep dive into GAE: the elegant solution for balancing bias and vari
 <section id="implementation">
     <h2>Implementation</h2>
     <p>
-        Here's how GAE is typically implemented in practice. The key insight is computing advantages in reverse order:
+        Here's how GAE is typically implemented in practice. The key insight is computing advantages in reverse order. We also need to handle episode boundaries correctly, since a batch of experience may span multiple episodes.
     </p>
-    <pre><code><span class="code-keyword">def</span> compute_gae(rewards, values, gamma, lambda_):
+    <p>
+        Episodes can end in two ways: <strong>termination</strong> (a true terminal state, e.g. death or reaching the goal) or <strong>truncation</strong> (a time limit was hit). These require different treatment:
+    </p>
+    <ul>
+        <li>On <strong>termination</strong>, there is no next state, so the bootstrap value \(V(s_{t+1})\) should be zero.</li>
+        <li>On <strong>truncation</strong>, the agent could have continued, so we still bootstrap with \(V(s_{t+1})\).</li>
+    </ul>
+    <p>
+        In both cases, we reset the backward pass at the episode boundary so that advantages from one episode don't bleed into another.
+    </p>
+    <pre><code><span class="code-keyword">import</span> numpy <span class="code-keyword">as</span> np
+
+<span class="code-keyword">def</span> compute_gae(rewards, values, terminated, truncated, gamma, lambda_):
     <span class="code-comment"># values has length T+1 (includes bootstrap value)</span>
-    <span class="code-comment"># rewards has length T</span>
+    <span class="code-comment"># rewards, terminated, truncated have length T</span>
     T = len(rewards)
-    advantages = [<span class="code-number">0</span>] * T
+    advantages = np.zeros(T)
     gae = <span class="code-number">0</span>
 
-    <span class="code-comment"># Backward pass through trajectory</span>
-    <span class="code-keyword">for</span> t <span class="code-keyword">in</span> reversed(range(T)):
-        <span class="code-comment"># TD error: r_t + γV(s_{t+1}) - V(s_t)</span>
-        delta = rewards[t] + gamma * values[t + <span class="code-number">1</span>] - values[t]
+    <span class="code-comment"># Terminated: no future value. Truncated: bootstrap as normal.</span>
+    next_values = np.where(terminated, <span class="code-number">0</span>, values[<span class="code-number">1</span>:])
+    deltas = rewards + gamma * next_values - values[:-<span class="code-number">1</span>]
 
-        <span class="code-comment"># GAE recursive formula: A_t = δ_t + γλA_{t+1}</span>
-        gae = delta + gamma * lambda_ * gae
+    <span class="code-comment"># Reset at any episode boundary (terminated or truncated)</span>
+    dones = terminated | truncated
+
+    <span class="code-keyword">for</span> t <span class="code-keyword">in</span> reversed(range(T)):
+        gae = deltas[t] + gamma * lambda_ * (~dones[t]) * gae
         advantages[t] = gae
 
     <span class="code-keyword">return</span> advantages</code></pre>
+
 </section>
 
 <section id="practical">
@@ -216,7 +221,7 @@ excerpt: "A deep dive into GAE: the elegant solution for balancing bias and vari
     <div class="insight-box">
         <h4>Why GAE Works</h4>
         <p>
-            GAE succeeds because it balances two sources of error: (1) bias from relying on an imperfect value function, and (2) variance from using noisy sampled returns. By tuning \(\lambda\), you can find the optimal tradeoff for your specific problem and value function quality.
+            GAE succeeds because it lets you control how much you trust your value function versus the raw sampled returns. A lower \(\lambda\) leans on \(V\) more (stable but potentially biased); a higher \(\lambda\) relies on actual rewards (unbiased but noisy). Tuning \(\lambda\) finds the right balance for your specific problem.
         </p>
     </div>
 </section>
@@ -272,7 +277,7 @@ excerpt: "A deep dive into GAE: the elegant solution for balancing bias and vari
         return advantages;
     }
 
-    // Render rollout visualization
+    // Render rollout visualisation
     function renderRollout() {
         let html = '';
 
@@ -331,7 +336,7 @@ excerpt: "A deep dive into GAE: the elegant solution for balancing bias and vari
             const gaeClass = advantages[t] >= 0 ? 'gae-positive' : 'gae-negative';
             html += `
                 <div class="computation-cell">
-                    <span class="symbol">Â${t}</span>
+                    <span class="symbol">A${t}</span>
                     <span class="value ${gaeClass}" id="gae-${t}">${advantages[t].toFixed(3)}</span>
                 </div>
             `;
@@ -396,9 +401,9 @@ excerpt: "A deep dive into GAE: the elegant solution for balancing bias and vari
 
             let logHtml;
             if (t === deltas.length - 1) {
-                logHtml = `<span class="log-step">t=${t}:</span> <span class="log-formula">Â${t} = δ${t} = </span><span class="log-result">${advantages[t].toFixed(3)}</span>`;
+                logHtml = `<span class="log-step">t=${t}:</span> <span class="log-formula">A${t} = δ${t} = </span><span class="log-result">${advantages[t].toFixed(3)}</span>`;
             } else {
-                logHtml = `<span class="log-step">t=${t}:</span> <span class="log-formula">Â${t} = ${deltas[t].toFixed(3)} + ${gamma}×${lambda}×${prevGae.toFixed(3)} = </span><span class="log-result">${advantages[t].toFixed(3)}</span>`;
+                logHtml = `<span class="log-step">t=${t}:</span> <span class="log-formula">A${t} = ${deltas[t].toFixed(3)} + ${gamma}×${lambda}×${prevGae.toFixed(3)} = </span><span class="log-result">${advantages[t].toFixed(3)}</span>`;
             }
 
             const logEntry = document.createElement('div');
@@ -425,7 +430,7 @@ excerpt: "A deep dive into GAE: the elegant solution for balancing bias and vari
         resetBtn.disabled = false;
     }
 
-    // Reset visualization
+    // Reset visualisation
     function reset() {
         renderRollout();
         renderComputationRows();
@@ -438,7 +443,7 @@ excerpt: "A deep dive into GAE: the elegant solution for balancing bias and vari
             </div>
             <div class="log-entry visible">
                 <span class="log-step">Step 2:</span>
-                <span class="log-formula">Compute GAE backward: Âₜ = δₜ + γλÂₜ₊₁</span>
+                <span class="log-formula">Compute GAE backward: Aₜ = δₜ + γλAₜ₊₁</span>
             </div>
         `;
 

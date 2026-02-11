@@ -5,7 +5,8 @@ permalink: /photography/
 ---
 
 <p class="photography-intro">
-  A collection of photographs I've taken. Click on any image to view it larger.
+  In my free time, I enjoy doing very amateur photographer, a small selection of those are presented below. 
+  Click on any image to view it larger.
 </p>
 
 <div class="masonry-grid">

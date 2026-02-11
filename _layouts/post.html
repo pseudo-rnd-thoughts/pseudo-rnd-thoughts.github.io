@@ -2,7 +2,15 @@
 layout: default
 ---
 
-{% assign words = content | number_of_words %}
+{% assign script_parts = content | split: '<script' %}
+{% assign prose = script_parts.first %}
+{% for part in script_parts %}
+  {% unless forloop.first %}
+    {% assign after_close = part | split: '</script>' %}
+    {% if after_close.size > 1 %}{% assign prose = prose | append: after_close.last %}{% endif %}
+  {% endunless %}
+{% endfor %}
+{% assign words = prose | strip_html | number_of_words %}
 {% assign minutes = words | divided_by: 200 %}
 {% if minutes < 1 %}{% assign minutes = 1 %}{% endif %}
 

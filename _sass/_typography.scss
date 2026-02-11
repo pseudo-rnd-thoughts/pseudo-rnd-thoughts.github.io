@@ -123,3 +123,8 @@ small, .text-small {
   font-size: 0.875rem;
   color: var(--text-secondary);
 }
+
+// highlight text
+.text-highlight {
+    color: var(--accent-primary-glow)
+}

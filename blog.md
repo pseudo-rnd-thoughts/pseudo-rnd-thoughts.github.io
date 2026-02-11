@@ -5,7 +5,7 @@ permalink: /blog/
 ---
 
 <p class="blog-intro">
-    A collection of blog posts that may appear without link and are just on topics that I think are interesting.
+    A collection of blog posts that may appear without link on topics that I think are interesting.
 </p>
 
 <ul class="post-list">

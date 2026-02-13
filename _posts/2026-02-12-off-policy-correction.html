@@ -1,157 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Off-Policy Correction: From TD to Retrace | Mark Towers</title>
-<meta name="description" content="Reinforcement Learning Engineer, Open Source Maintainer, PhD in Explainable RL">
+---
+layout: post
+title: "How does Retrace fix Off-Policyness?"
+date: 2026-02-12
+excerpt: "When your RL agent trains on data from an old policy, the value estimates go wrong. Retrace was designed to address this problem."
+math: true
+---
 
-<!-- Google Fonts -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=JetBrains+Mono:wght@400;500&family=Newsreader:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
-
-<!-- Stylesheet -->
-<link rel="stylesheet" href="/assets/css/main.css">
-
-
-<!-- MathJax -->
-<script>
-MathJax = {
-  tex: {
-    inlineMath: [['$', '$'], ['\\(', '\\)']],
-    displayMath: [['$$', '$$'], ['\\[', '\\]']]
-  },
-  svg: {
-    fontCache: 'global'
-  }
-};
-</script>
-<script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
-
-
-<!-- SEO -->
-<!-- Begin Jekyll SEO tag v2.8.0 -->
-<title>Off-Policy Correction: From TD to Retrace | Mark Towers</title>
-<meta name="generator" content="Jekyll v4.4.1" />
-<meta property="og:title" content="Off-Policy Correction: From TD to Retrace" />
-<meta name="author" content="Mark Towers" />
-<meta property="og:locale" content="en_US" />
-<meta name="description" content="Understanding importance sampling corrections in reinforcement learning, from simple TD errors through n-step returns to the Retrace algorithm." />
-<meta property="og:description" content="Understanding importance sampling corrections in reinforcement learning, from simple TD errors through n-step returns to the Retrace algorithm." />
-<link rel="canonical" href="http://localhost:4000/blog/off-policy-correction/" />
-<meta property="og:url" content="http://localhost:4000/blog/off-policy-correction/" />
-<meta property="og:site_name" content="Mark Towers" />
-<meta property="og:type" content="article" />
-<meta property="article:published_time" content="2026-01-31T00:00:00+00:00" />
-<meta name="twitter:card" content="summary" />
-<meta property="twitter:title" content="Off-Policy Correction: From TD to Retrace" />
-<script type="application/ld+json">
-{"@context":"https://schema.org","@type":"BlogPosting","author":{"@type":"Person","name":"Mark Towers"},"dateModified":"2026-01-31T00:00:00+00:00","datePublished":"2026-01-31T00:00:00+00:00","description":"Understanding importance sampling corrections in reinforcement learning, from simple TD errors through n-step returns to the Retrace algorithm.","headline":"Off-Policy Correction: From TD to Retrace","mainEntityOfPage":{"@type":"WebPage","@id":"http://localhost:4000/blog/off-policy-correction/"},"url":"http://localhost:4000/blog/off-policy-correction/"}</script>
-<!-- End Jekyll SEO tag -->
-
-
-</head>
-<body>
-  <header class="site-header">
-  <div class="container">
-    <nav class="site-nav">
-      <a href="/" >About</a>
-      <a href="/blog" class="active">Blog</a>
-      <a href="/photography" >Photography</a>
-    </nav>
-  </div>
-</header>
-
-
-  <main class="site-main">
-    
-
-
-
-<article class="post">
-  <div class="container">
-    <header class="post-header">
-      <h1>Off-Policy Correction: From TD to Retrace</h1>
-      <div class="post-meta">
-        <time datetime="2026-01-31T00:00:00+00:00">
-          January 31, 2026
-        </time>
-        <span class="reading-time">16 min read</span>
-      </div>
-    </header>
-
-    <div class="post-container">
-      
-      
-      <aside class="post-sidebar">
-        
-
-
-
-
-<nav class="toc">
-  <h4>Contents</h4>
-  <ul>
-    
-      
-      
-      
-      
-      <li class="toc-level-2">
-        <a href="#algorithms">Importance Sampling Ratios</a>
-      </li>
-    
-      
-      
-      
-      
-      <li class="toc-level-3">
-        <a href="#visualization">3. Retrace(λ): The Safe Solution</a>
-      </li>
-    
-      
-      
-      
-      
-      <li class="toc-level-2">
-        <a href="#product-display">Interactive Visualization</a>
-      </li>
-    
-      
-      
-      
-      
-      <li class="toc-level-2">
-        <a href="#intuition">Implementation</a>
-      </li>
-    
-      
-      
-      
-      
-      <li class="toc-level-3">
-        <a href="#references">Special Cases</a>
-      </li>
-    
-      
-      
-      
-      
-      <li class="toc-level-2">
-        <a href="#target-${t}">References</a>
-      </li>
-    
-  </ul>
-</nav>
-
-
-
-      </aside>
-      
-
-      <div class="post-content">
-        <style>
+<style>
     /* Visualization specific styles */
     .policy-indicator {
         display: inline-flex;
@@ -165,12 +20,12 @@ MathJax = {
 
     .policy-target {
         background: rgba(78, 205, 196, 0.15);
-        border: 1px solid var(--primary);
+        border: 1px solid var(--accent-primary);
     }
 
     .policy-behavior {
         background: rgba(255, 166, 87, 0.15);
-        border: 1px solid var(--advantage-positive);
+        border: 1px solid var(--accent-orange);
     }
 
     .policy-legend {
@@ -195,13 +50,13 @@ MathJax = {
     }
 
     .ratio-numerator {
-        color: var(--primary);
+        color: var(--accent-primary);
         border-bottom: 1px solid var(--text-muted);
         padding-bottom: 2px;
     }
 
     .ratio-denominator {
-        color: var(--advantage-positive);
+        color: var(--accent-orange);
         padding-top: 2px;
     }
 
@@ -212,7 +67,7 @@ MathJax = {
     }
 
     .ratio-value.high {
-        color: var(--reward-negative);
+        color: var(--accent-red);
     }
 
     .ratio-value.normal {
@@ -220,11 +75,11 @@ MathJax = {
     }
 
     .ratio-value.low {
-        color: var(--advantage-negative);
+        color: var(--accent-blue);
     }
 
     .truncated-value {
-        color: var(--reward-positive) !important;
+        color: var(--accent-green) !important;
     }
 
     .action-label {
@@ -243,9 +98,9 @@ MathJax = {
 
     .algorithm-tab {
         padding: 10px 20px;
-        border: 1px solid var(--border);
+        border: 1px solid var(--accent-border);
         border-radius: 8px;
-        background: var(--bg-elevated);
+        background: var(--bg-tertiary);
         color: var(--text-secondary);
         cursor: pointer;
         transition: all 0.2s;
@@ -253,14 +108,14 @@ MathJax = {
     }
 
     .algorithm-tab:hover {
-        border-color: var(--primary);
+        border-color: var(--accent-primary);
         color: var(--text-primary);
     }
 
     .algorithm-tab.active {
-        background: var(--primary);
-        color: var(--bg-dark);
-        border-color: var(--primary);
+        background: var(--accent-primary);
+        color: var(--bg-primary);
+        border-color: var(--accent-primary);
     }
 
     /* Extended transition for policy probs */
@@ -291,12 +146,12 @@ MathJax = {
     }
 
     .prob-value-target {
-        color: var(--primary);
+        color: var(--accent-primary);
         font-family: 'JetBrains Mono', monospace;
     }
 
     .prob-value-behavior {
-        color: var(--advantage-positive);
+        color: var(--accent-orange);
         font-family: 'JetBrains Mono', monospace;
     }
 
@@ -309,7 +164,7 @@ MathJax = {
         flex-wrap: wrap;
         justify-content: center;
         padding: 16px;
-        background: var(--bg-dark);
+        background: var(--bg-primary);
         border-radius: 8px;
         margin: 16px 0;
     }
@@ -317,11 +172,11 @@ MathJax = {
     .product-term {
         padding: 4px 8px;
         border-radius: 4px;
-        background: var(--bg-elevated);
+        background: var(--bg-tertiary);
     }
 
     .product-term.included {
-        border: 1px solid var(--primary);
+        border: 1px solid var(--accent-primary);
     }
 
     .product-term.excluded {
@@ -334,10 +189,10 @@ MathJax = {
     }
 
     .product-result {
-        color: var(--reward-positive);
+        color: var(--accent-green);
         font-weight: 600;
         padding-left: 8px;
-        border-left: 2px solid var(--border);
+        border-left: 2px solid var(--accent-border);
         margin-left: 8px;
     }
 
@@ -348,7 +203,7 @@ MathJax = {
         gap: 12px;
         margin: 16px 0;
         padding: 12px 16px;
-        background: var(--bg-dark);
+        background: var(--bg-primary);
         border-radius: 8px;
     }
 
@@ -361,7 +216,7 @@ MathJax = {
     .variance-bar {
         flex: 1;
         height: 8px;
-        background: var(--bg-elevated);
+        background: var(--bg-tertiary);
         border-radius: 4px;
         overflow: hidden;
     }
@@ -373,15 +228,15 @@ MathJax = {
     }
 
     .variance-fill.low {
-        background: var(--reward-positive);
+        background: var(--accent-green);
     }
 
     .variance-fill.medium {
-        background: var(--advantage-positive);
+        background: var(--accent-orange);
     }
 
     .variance-fill.high {
-        background: var(--reward-negative);
+        background: var(--accent-red);
     }
 
     .variance-value {
@@ -393,16 +248,16 @@ MathJax = {
 
     /* Formula highlight box */
     .formula-box {
-        background: var(--bg-dark);
-        border: 1px solid var(--border);
+        background: var(--bg-primary);
+        border: 1px solid var(--accent-border);
         border-radius: 8px;
         padding: 16px 20px;
         margin: 16px 0;
     }
 
     .formula-box.active {
-        border-color: var(--primary);
-        box-shadow: 0 0 15px var(--primary-dim);
+        border-color: var(--accent-primary);
+        box-shadow: 0 0 15px var(--accent-primary-dim);
     }
 
     .formula-box .formula-name {
@@ -444,39 +299,48 @@ MathJax = {
     }
 
     .trace-cell .trace-value.truncated {
-        color: var(--reward-positive);
+        color: var(--accent-green);
     }
 
     .trace-cell .trace-value.full {
-        color: var(--reward-negative);
+        color: var(--accent-red);
     }
 
     .trace-cell .truncate-indicator {
         font-size: 0.7rem;
-        color: var(--reward-positive);
+        color: var(--accent-green);
         margin-top: 2px;
     }
 </style>
 
 <section id="introduction">
-    <h2>The Off-Policy Problem</h2>
+    <h2>Why Off-Policy Correction Matters</h2>
     <p>
-        In reinforcement learning, we often want to learn about one policy while following another. The policy we're evaluating or improving is called the <strong>target policy</strong> (π), while the policy generating our experience is the <strong>behavior policy</strong> (μ).
+        Consider a typical deep RL training loop. Your agent collects a batch of experience using its current policy, stores it in a replay buffer, then updates the policy with gradient descent. By the time you sample that experience again for a second training step, the policy has already changed. The data was collected by an older version of the policy, but you're trying to improve the current one.
     </p>
     <p>
-        This situation arises naturally in many scenarios: learning from historical data, using exploration policies, or leveraging experience replay buffers. The challenge is that the returns we observe come from μ, but we need value estimates for π.
+        This gap between the <strong>data-collecting policy</strong> (called the <strong>behavior policy</strong>, μ) and the <strong>policy being improved</strong> (the <strong>target policy</strong>, π) is the off-policy problem. It shows up everywhere: experience replay in DQN, distributed training where actors lag behind the learner (as in IMPALA), or learning from demonstrations and historical data.
+    </p>
+    <p>
+        So what goes wrong? The outcomes in our replay buffer reflect how μ behaved, not how π would behave. If μ frequently took some action that π would rarely choose, our data over-represents that action's outcomes. If π strongly prefers an action that μ rarely took, those outcomes are underrepresented.
+    </p>
+    <p>
+        Without correction, our value estimates inherit this mismatch: they become biased towards what the old policy did, not what the current policy would do. In the worst case, this bias compounds over updates and learning diverges entirely.
     </p>
 
     <div class="insight-box">
         <h4>The Core Problem</h4>
-        <p>When π ≠ μ, the distribution of trajectories differs between what we observe and what we want to evaluate. Naive use of off-policy data leads to biased estimates that can cause learning to diverge.</p>
+        <p>Data in the replay buffer was generated by a past version of the policy. Using it directly to update the current policy gives biased value estimates because the distribution of actions (and therefore trajectories) no longer matches.</p>
     </div>
 </section>
 
 <section id="importance-sampling">
-    <h2>Importance Sampling Ratios</h2>
+    <h2>Importance Sampling: The Basic Fix</h2>
     <p>
-        The standard tool for correcting distribution mismatch is <strong>importance sampling</strong>. For each action, we compute the ratio of how likely the target policy would take that action versus the behavior policy:
+        The standard tool for correcting this distribution mismatch is <strong>importance sampling</strong>. The idea is simple: if the target policy is twice as likely to take some action compared to the behavior policy, we should count that transition twice as much. If it's half as likely, we should halve its contribution.
+    </p>
+    <p>
+        We capture this with the <strong>importance sampling ratio</strong>, which compares the probability each policy assigns to the action that was actually taken in state \(s_t\):
     </p>
 
     <div class="math-block highlight">
@@ -484,61 +348,59 @@ MathJax = {
     </div>
 
     <p>
-        This ratio tells us how to reweight observations:
+        Here \(\pi(a_t | s_t)\) is the probability the target policy assigns to action \(a_t\) in state \(s_t\), and \(\mu(a_t | s_t)\) is the probability the behavior policy assigned to it. The ratio tells us how to reweight each transition:
     </p>
     <ul>
-        <li><strong>ρ > 1</strong>: Target policy prefers this action more than behavior → upweight</li>
-        <li><strong>ρ < 1</strong>: Target policy prefers this action less → downweight</li>
-        <li><strong>ρ = 1</strong>: Both policies equally likely → no correction needed</li>
+        <li><strong>ρ > 1</strong>: The target policy favors this action more than the behavior policy did, so we upweight this transition</li>
+        <li><strong>ρ < 1</strong>: The target policy is less likely to take this action, so we downweight it</li>
+        <li><strong>ρ = 1</strong>: Both policies agree on this action, so no correction is needed</li>
     </ul>
+    <p>
+        With this ratio in hand, we can correct off-policy data. But how we apply it makes a big difference, and that's where things get interesting.
+    </p>
 </section>
 
-<section id="algorithms">
-    <h2>Three Approaches to Off-Policy Learning</h2>
-
-    <h3>1. One-Step TD (No Correction Needed)</h3>
+<section id="naive-approach">
+    <h2>Why N-Step Returns Alone Don't Work</h2>
     <p>
-        The simplest approach uses only one-step bootstrapping:
-    </p>
-    <div class="math-block">
-        $$G_t^{(1)} = r_t + \gamma V(s_{t+1})$$
-    </div>
-    <p>
-        Since we bootstrap immediately, we don't need importance sampling for the value estimate (though we may need it for the policy gradient). This gives <strong>low variance</strong> but <strong>high bias</strong> since we rely entirely on our potentially inaccurate value function.
-    </p>
-
-    <h3>2. N-Step Returns with Full IS</h3>
-    <p>
-        To reduce bias, we can use actual rewards over multiple steps:
+        A natural first idea is to use multiple steps of real rewards before bootstrapping from our value function. Using more real rewards means we rely less on a potentially inaccurate value estimate, reducing bias. The n-step return looks like:
     </p>
     <div class="math-block">
         $$G_t^{(n)} = \sum_{k=0}^{n-1} \gamma^k r_{t+k} + \gamma^n V(s_{t+n})$$
     </div>
     <p>
-        But for off-policy learning, we must correct for the distribution mismatch by multiplying by the product of all importance ratios:
+        But those n steps of rewards came from the behavior policy μ. To correct for this, we multiply by the product of importance sampling ratios across all n steps:
     </p>
     <div class="math-block highlight">
         $$G_t^{IS} = \left(\prod_{k=0}^{n-1} \rho_{t+k}\right) \cdot G_t^{(n)}$$
     </div>
     <p>
-        <strong>The problem:</strong> This product can explode exponentially. If each ρ averages to 2, after 10 steps the correction factor is 2<sup>10</sup> = 1024. This causes <strong>massive variance</strong>.
+        Each individual ratio might be modest, but they multiply together. If the policies have diverged so that each ρ averages around 2, after just 10 steps the correction factor is 2<sup>10</sup> = 1024. A single trajectory can dominate the entire update, causing massive variance that destabilises learning.
     </p>
-
-    <h3>3. Retrace(λ): The Safe Solution</h3>
     <p>
-        Retrace truncates the importance ratios to prevent variance explosion while maintaining convergence guarantees:
+        This creates a frustrating dilemma. Using fewer steps keeps the IS product small (low variance) but forces us to trust a possibly wrong value function (high bias). Using more steps reduces that bias but makes the IS product explode (high variance). We need a way to use multi-step returns without the variance blowing up.
+    </p>
+</section>
+
+<section id="retrace">
+    <h2>Retrace(λ): Safe Off-Policy Learning</h2>
+    <p>
+        Retrace breaks out of this dilemma with one key modification: instead of multiplying raw importance ratios, it <strong>truncates</strong> each ratio before multiplying. It defines a <strong>trace coefficient</strong>:
     </p>
     <div class="math-block">
         $$c_t = \lambda \cdot \min(1, \rho_t)$$
     </div>
     <p>
-        The key insight: by capping ratios at 1, we only <em>downweight</em> unlikely actions but never <em>upweight</em> beyond the observed frequency. The Retrace target becomes:
+        The \(\min(1, \rho_t)\) caps each ratio at 1, and the λ parameter (between 0 and 1) provides additional decay. Since every \(c_t\) is at most λ, the product of trace coefficients can only shrink over time. No matter how different the two policies are, the correction weights stay bounded.
+    </p>
+    <p>
+        Retrace uses these trace coefficients to weight TD errors across multiple steps. The target for each timestep is:
     </p>
     <div class="math-block highlight">
         $$G_t^{ret} = Q(s_t, a_t) + \sum_{k=0}^{T-t-1} \gamma^k \left(\prod_{j=1}^{k} c_{t+j}\right) \delta_{t+k}$$
     </div>
     <p>
-        Or recursively (for implementation):
+        where \(\delta_t = r_t + \gamma V(s_{t+1}) - Q(s_t, a_t)\) is the TD error at step t. In practice, this is computed efficiently with a backward pass using the recursive form:
     </p>
     <div class="math-block">
         $$G_t^{ret} = r_t + \gamma \left[ c_{t+1}(G_{t+1}^{ret} - Q(s_{t+1}, a_{t+1})) + V(s_{t+1}) \right]$$
@@ -563,8 +425,9 @@ MathJax = {
 
     <div class="algorithm-tabs">
         <button class="algorithm-tab active" data-algo="td">1-Step TD</button>
-        <button class="algorithm-tab" data-algo="nstep">N-Step IS</button>
+        <button class="algorithm-tab" data-algo="nstep">N-Step</button>
         <button class="algorithm-tab" data-algo="retrace">Retrace(λ)</button>
+        <button class="algorithm-tab" data-algo="vtrace">V-trace</button>
     </div>
 
     <div class="controls">
@@ -631,7 +494,13 @@ MathJax = {
 </section>
 
 <section id="comparison">
-    <h2>Algorithm Comparison</h2>
+    <h2>Bias and Variance</h2>
+    <p>
+        These two properties govern the quality of any value estimate. <strong>Bias</strong> is systematic error: if our value function \(V\) is inaccurate, any estimate that relies on it inherits that inaccuracy. <strong>Variance</strong> is noise across different samples: even if an estimate is correct on average, individual samples might swing wildly, making each gradient update unreliable.
+    </p>
+    <p>
+        Ideally we want both low bias and low variance. In practice, there is a trade-off. Using more real rewards reduces bias (less reliance on \(V\)) but increases variance (more randomness from the environment and policy). Off-policy IS corrections make this worse by multiplying ratios together.
+    </p>
 
     <table class="comparison-table">
         <thead>
@@ -644,13 +513,7 @@ MathJax = {
         </thead>
         <tbody>
             <tr>
-                <td><strong>1-Step TD</strong></td>
-                <td><span class="badge badge-high">High</span></td>
-                <td><span class="badge badge-low">Low</span></td>
-                <td>Guaranteed</td>
-            </tr>
-            <tr>
-                <td><strong>N-Step Full IS</strong></td>
+                <td><strong>N-Step IS</strong></td>
                 <td><span class="badge badge-low">Low</span></td>
                 <td><span class="badge badge-high">Explosive</span></td>
                 <td>Can diverge</td>
@@ -661,14 +524,23 @@ MathJax = {
                 <td><span class="badge badge-low">Bounded</span></td>
                 <td>Guaranteed</td>
             </tr>
+            <tr>
+                <td><strong>V-trace</strong></td>
+                <td><span class="badge badge-low">Low*</span></td>
+                <td><span class="badge badge-low">Bounded</span></td>
+                <td>Guaranteed</td>
+            </tr>
         </tbody>
     </table>
+    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: var(--spacing-sm);">
+        *With finite \(\bar{\rho}\), V-trace converges to a policy between \(\mu\) and \(\pi\), introducing slight bias relative to the true target policy.
+    </p>
 
     <div class="lambda-spectrum">
         <div class="spectrum-end left">
-            <h4>Full IS (n-step)</h4>
+            <h4>N-Step IS</h4>
             <div class="formula">ρ₀ × ρ₁ × ... × ρₙ</div>
-            <p>Unbiased but<br><span class="badge badge-high">Exponential variance</span></p>
+            <p>Low bias but<br><span class="badge badge-high">Exponential variance</span></p>
         </div>
         <div class="spectrum-middle">
             <div class="spectrum-arrow">⟷</div>
@@ -677,7 +549,7 @@ MathJax = {
         <div class="spectrum-end right">
             <h4>Truncated IS</h4>
             <div class="formula">min(1,ρ₀) × min(1,ρ₁) × ...</div>
-            <p>Safe convergence<br><span class="badge badge-low">Bounded variance</span></p>
+            <p>Low bias with<br><span class="badge badge-low">Bounded variance</span></p>
         </div>
     </div>
 </section>
@@ -727,30 +599,85 @@ MathJax = {
 
 <section id="intuition">
     <h2>Why Truncation Works</h2>
+    <p>
+        The variance problem in n-step IS comes from <em>upweighting</em>. When the target policy strongly prefers an action (ρ >> 1), n-step IS massively amplifies that transition. But we only observed it once. Amplifying a single observation doesn't give us more information, it just adds noise.
+    </p>
+    <p>
+        Retrace's truncation (\(\min(1, \rho)\)) takes an asymmetric approach to fix this:
+    </p>
+    <ul>
+        <li><strong>When ρ < 1</strong> (target policy dislikes this action): the ratio passes through unchanged, correctly reducing this transition's influence.</li>
+        <li><strong>When ρ > 1</strong> (target policy prefers this action): the ratio is capped at 1, leaving the transition at its natural observed weight rather than inflating it.</li>
+    </ul>
 
     <div class="insight-box">
         <h4>The Key Insight</h4>
         <p>
-            By capping importance ratios at 1, Retrace only <em>reduces</em> the weight of actions the target policy dislikes, but never <em>amplifies</em> actions beyond their observed frequency. This prevents the variance explosion while still correcting for off-policy bias where it matters most.
+            Retrace says: trust the data you have. If the behavior policy took an action the target policy would avoid, downweight it. But if the behavior policy took an action the target policy likes, just use it as-is. Never amplify beyond what was actually observed.
         </p>
     </div>
 
     <p>
-        When the target policy strongly prefers an action (ρ >> 1), full IS would massively upweight that transition. But we already observed that transition once—amplifying it further just adds noise. Retrace says: "trust what you observed, but downweight what the target policy wouldn't do."
+        Because every trace coefficient satisfies \(c_t \leq \lambda \leq 1\), the product of coefficients across multiple steps can only shrink. This is what bounds the variance: no matter how different π and μ are, the correction weights stay controlled.
     </p>
 
     <h3>Special Cases</h3>
+    <p>Retrace smoothly interpolates between familiar algorithms depending on the setting:</p>
     <ul>
-        <li><strong>On-policy (π = μ):</strong> All ρ = 1, so c = λ, and Retrace becomes TD(λ)</li>
-        <li><strong>λ = 0:</strong> Retrace becomes one-step TD (no trace, maximum bias)</li>
-        <li><strong>λ = 1, π = μ:</strong> Equivalent to Monte Carlo returns</li>
+        <li><strong>On-policy (π = μ):</strong> All ρ = 1, so c = λ, and Retrace reduces to TD(λ)</li>
+        <li><strong>λ = 0:</strong> All traces are zeroed out, giving one-step TD (maximum bias, minimum variance)</li>
+        <li><strong>λ = 1, π = μ:</strong> Equivalent to Monte Carlo returns (minimum bias, maximum variance)</li>
     </ul>
+</section>
+
+<section id="vtrace">
+    <h2>V-trace: Scaling to Distributed Systems</h2>
+    <p>
+        V-trace (Espeholt et al., 2018) was developed for IMPALA, a massively distributed RL architecture where dozens of actors collect experience in parallel while a central learner updates the policy. In this setting, the behavior policy can be many updates behind the learner, making off-policy correction essential.
+    </p>
+    <p>
+        V-trace is closely related to Retrace but introduces a key structural change: it uses <strong>two separate clipping constants</strong> instead of one. The V-trace target is:
+    </p>
+    <div class="math-block highlight">
+        $$v_s = V(s_s) + \sum_{t=s}^{s+n-1} \gamma^{t-s} \left(\prod_{i=s}^{t-1} \bar{c}_i\right) \bar{\rho}_t \, \delta_t$$
+    </div>
+    <p>where the two clipping levels serve distinct roles:</p>
+    <ul>
+        <li>
+            \(\bar{\rho}_t = \min(\bar{\rho}, \rho_t)\) clips the importance weight applied to each <strong>TD error</strong>. This controls what value function V-trace converges to. With \(\bar{\rho} = \infty\) it converges to \(V^\pi\); with finite \(\bar{\rho}\) it converges to a policy between \(\mu\) and \(\pi\).
+        </li>
+        <li>
+            \(\bar{c}_t = \min(\bar{c}, \rho_t)\) clips the <strong>trace coefficient</strong> that determines how far corrections propagate backward. This is analogous to Retrace's \(c_t\) and controls the speed of convergence.
+        </li>
+    </ul>
+
+    <h3>Relationship to Retrace</h3>
+    <p>
+        When \(\bar{\rho} = \bar{c} = 1\) and \(\lambda = 1\), V-trace and Retrace(1) produce the same targets. The key difference is that V-trace separates the two roles that clipping plays:
+    </p>
+    <ul>
+        <li><strong>Retrace</strong> uses a single clip: \(c_t = \lambda \min(1, \rho_t)\) appears both as the trace coefficient and implicitly as the TD error weight.</li>
+        <li><strong>V-trace</strong> decouples these: \(\bar{\rho}\) controls the fixed point while \(\bar{c}\) controls the trace length, and \(\bar{c} \leq \bar{\rho}\) is required.</li>
+    </ul>
+    <p>
+        This decoupling gives V-trace an extra knob. In highly distributed settings where the behavior policy can be very stale, using a moderate \(\bar{\rho}\) sacrifices convergence to the exact target policy in exchange for greater stability. In practice, the IMPALA paper found that \(\bar{\rho} = 1\) and \(\bar{c} = 1\) (equivalent to Retrace) works well, but having the option to tune \(\bar{\rho}\) independently is valuable when policies diverge significantly.
+    </p>
+
+    <div class="insight-box">
+        <h4>When to use which?</h4>
+        <p>
+            Use <strong>Retrace</strong> when you need guaranteed convergence to \(Q^\pi\) and the behavior policy is reasonably close. Use <strong>V-trace</strong> in distributed systems where actors may be many updates behind the learner and you need the extra stability from separate \(\bar{\rho}\) clipping.
+        </p>
+    </div>
 </section>
 
 <section id="references">
     <h2>References</h2>
     <p>
         Munos, R., Stepleton, T., Harutyunyan, A., & Bellemare, M. G. (2016). <em>Safe and Efficient Off-Policy Reinforcement Learning.</em> NeurIPS 2016.
+    </p>
+    <p>
+        Espeholt, L., Soyer, H., Munos, R., et al. (2018). <em>IMPALA: Scalable Distributed Deep-RL with Importance Weighted Actor-Learner Architectures.</em> ICML 2018.
     </p>
     <p>
         Precup, D., Sutton, R. S., & Singh, S. (2000). <em>Eligibility Traces for Off-Policy Policy Evaluation.</em> ICML 2000.
@@ -825,6 +752,20 @@ MathJax = {
         return rhos.map(rho => lambda * Math.min(1, rho));
     }
 
+    // V-trace uses two separate clipping constants
+    const rhoBar = 1;  // clips TD error weight (controls fixed point)
+    const cBar = 1;    // clips trace coefficient (controls propagation)
+
+    function computeVtraceRhoBar() {
+        const rhos = computeRatios();
+        return rhos.map(rho => Math.min(rhoBar, rho));
+    }
+
+    function computeVtraceCBar() {
+        const rhos = computeRatios();
+        return rhos.map(rho => Math.min(cBar, rho));
+    }
+
     function computeTDErrors() {
         const deltas = [];
         for (let t = 0; t < baseData.rewards.length; t++) {
@@ -856,6 +797,18 @@ MathJax = {
                 targets.push(baseData.qValues[t] + target);
             }
             return targets;
+        } else if (currentAlgo === 'vtrace') {
+            // V-trace: separate rho_bar (TD weight) and c_bar (trace)
+            const rhoBarVals = computeVtraceRhoBar();
+            const cBarVals = computeVtraceCBar();
+            const targets = new Array(T).fill(0);
+            let ret = 0;
+            for (let t = T - 1; t >= 0; t--) {
+                const weightedDelta = rhoBarVals[t] * deltas[t];
+                ret = weightedDelta + gamma * cBarVals[t] * ret;
+                targets[t] = baseData.values[t] + ret;
+            }
+            return targets;
         } else {
             // Retrace
             const targets = new Array(T).fill(0);
@@ -879,6 +832,11 @@ MathJax = {
             if (product > 3) return { level: 'high', percent: 80, label: 'Very High' };
             if (product > 1.5) return { level: 'medium', percent: 60, label: 'High' };
             return { level: 'medium', percent: 40, label: 'Moderate' };
+        } else if (currentAlgo === 'vtrace') {
+            const cBarVals = computeVtraceCBar();
+            const maxTrace = cBarVals.reduce((a, b) => a * b, 1);
+            if (maxTrace > 0.5) return { level: 'low', percent: 30, label: 'Low' };
+            return { level: 'low', percent: 20, label: 'Very Low' };
         } else {
             const cs = computeTruncatedRatios();
             const maxTrace = cs.reduce((a, b) => a * b, 1);
@@ -892,9 +850,9 @@ MathJax = {
         varianceFill.className = `variance-fill ${variance.level}`;
         varianceFill.style.width = `${variance.percent}%`;
         varianceValue.textContent = variance.label;
-        varianceValue.style.color = variance.level === 'high' ? 'var(--reward-negative)' :
-                                    variance.level === 'medium' ? 'var(--advantage-positive)' :
-                                    'var(--reward-positive)';
+        varianceValue.style.color = variance.level === 'high' ? 'var(--accent-red)' :
+                                    variance.level === 'medium' ? 'var(--accent-orange)' :
+                                    'var(--accent-green)';
     }
 
     function renderRollout() {
@@ -994,9 +952,42 @@ MathJax = {
             html += '</div>';
         }
 
+        // Show V-trace clipped coefficients (rho-bar and c-bar)
+        if (currentAlgo === 'vtrace') {
+            const rhoBarVals = computeVtraceRhoBar();
+            const cBarVals = computeVtraceCBar();
+            html += '<div class="trace-row"><div class="label" style="min-width: 60px;">ρ&#x0304; (TD)</div>';
+            for (let t = 0; t < rhoBarVals.length; t++) {
+                const wasTruncated = rhos[t] > rhoBar;
+                html += `
+                    <div class="trace-cell">
+                        <span class="trace-symbol">ρ&#x0304;${t}</span>
+                        <span class="trace-value truncated" id="rhobar-${t}">${rhoBarVals[t].toFixed(2)}</span>
+                        ${wasTruncated ? '<span class="truncate-indicator">capped</span>' : ''}
+                    </div>
+                `;
+                if (t < rhoBarVals.length - 1) html += '<div class="spacer-cell"></div>';
+            }
+            html += '</div>';
+            html += '<div class="trace-row"><div class="label" style="min-width: 60px;">c&#x0304; (trace)</div>';
+            for (let t = 0; t < cBarVals.length; t++) {
+                const wasTruncated = rhos[t] > cBar;
+                html += `
+                    <div class="trace-cell">
+                        <span class="trace-symbol">c&#x0304;${t}</span>
+                        <span class="trace-value truncated" id="cbar-${t}">${cBarVals[t].toFixed(2)}</span>
+                        ${wasTruncated ? '<span class="truncate-indicator">capped</span>' : ''}
+                    </div>
+                `;
+                if (t < cBarVals.length - 1) html += '<div class="spacer-cell"></div>';
+            }
+            html += '</div>';
+        }
+
         // Target row
         const targetLabel = currentAlgo === 'td' ? 'G (1-step)' :
-                          currentAlgo === 'nstep' ? 'G (n-step)' : 'G (retrace)';
+                          currentAlgo === 'nstep' ? 'G (n-step IS)' :
+                          currentAlgo === 'vtrace' ? 'v (V-trace)' : 'G (retrace)';
         html += `<div class="computation-row"><div class="label">${targetLabel}</div>`;
         for (let t = 0; t < targets.length; t++) {
             const gaeClass = targets[t] >= baseData.qValues[t] ? 'gae-positive' : 'gae-negative';
@@ -1022,8 +1013,8 @@ MathJax = {
         productDisplay.style.display = 'block';
         const rhos = computeRatios();
         const cs = computeTruncatedRatios();
-        const useCs = currentAlgo === 'retrace';
-        const vals = useCs ? cs : rhos;
+        const useCs = currentAlgo === 'retrace' || currentAlgo === 'vtrace';
+        const vals = currentAlgo === 'vtrace' ? computeVtraceCBar() : useCs ? cs : rhos;
 
         let html = '';
         let product = 1;
@@ -1034,7 +1025,7 @@ MathJax = {
             const val = vals[i];
             product *= val;
 
-            const label = useCs ? `c${i}` : `ρ${i}`;
+            const label = currentAlgo === 'vtrace' ? `c\u0304${i}` : useCs ? `c${i}` : `ρ${i}`;
             html += `<span class="product-term ${included ? 'included' : 'excluded'}">${label}=${val.toFixed(2)}</span>`;
         }
 
@@ -1063,11 +1054,26 @@ MathJax = {
             html = `
                 <div class="log-entry visible">
                     <span class="log-step">Formula:</span>
-                    <span class="log-formula">Gₜ = (ρₜ×ρₜ₊₁×...×ρₙ) × Σγᵏrₜ₊ₖ + γⁿV(sₙ)</span>
+                    <span class="log-formula">Gₜ = (ρₜ×ρₜ₊₁×...×ρₙ) × (Σγᵏrₜ₊ₖ + γⁿV(sₙ))</span>
                 </div>
                 <div class="log-entry visible">
                     <span class="log-step">Warning:</span>
-                    <span class="log-formula" style="color: var(--reward-negative);">Product of ratios can explode!</span>
+                    <span class="log-formula" style="color: var(--accent-red);">Product of IS ratios can explode!</span>
+                </div>
+            `;
+        } else if (currentAlgo === 'vtrace') {
+            html = `
+                <div class="log-entry visible">
+                    <span class="log-step">Step 1:</span>
+                    <span class="log-formula">Compute ρ̄ₜ = min(ρ̄, ρₜ) and c̄ₜ = min(c̄, ρₜ)</span>
+                </div>
+                <div class="log-entry visible">
+                    <span class="log-step">Step 2:</span>
+                    <span class="log-formula">Backward: vₛ = V(sₛ) + Σ γᵗ⁻ˢ (∏c̄ᵢ) ρ̄ₜδₜ</span>
+                </div>
+                <div class="log-entry visible">
+                    <span class="log-step">Key:</span>
+                    <span class="log-formula" style="color: var(--accent-green);">Two clips: ρ̄ controls fixed point, c̄ controls trace</span>
                 </div>
             `;
         } else {
@@ -1082,7 +1088,7 @@ MathJax = {
                 </div>
                 <div class="log-entry visible">
                     <span class="log-step">Key:</span>
-                    <span class="log-formula" style="color: var(--reward-positive);">Truncation prevents variance explosion</span>
+                    <span class="log-formula" style="color: var(--accent-green);">Truncation prevents variance explosion</span>
                 </div>
             `;
         }
@@ -1140,11 +1146,18 @@ MathJax = {
             }
             await sleep(300);
 
-            if (currentAlgo === 'retrace') {
-                // Show truncated coefficients
+            if (currentAlgo === 'retrace' || currentAlgo === 'vtrace') {
+                // Show truncated/clipped coefficients
                 for (let t = 0; t < T; t++) {
-                    const cEl = document.getElementById(`c-${t}`);
-                    if (cEl) cEl.style.opacity = '1';
+                    if (currentAlgo === 'retrace') {
+                        const cEl = document.getElementById(`c-${t}`);
+                        if (cEl) cEl.style.opacity = '1';
+                    } else {
+                        const rhoBarEl = document.getElementById(`rhobar-${t}`);
+                        const cBarEl = document.getElementById(`cbar-${t}`);
+                        if (rhoBarEl) rhoBarEl.style.opacity = '1';
+                        if (cBarEl) cBarEl.style.opacity = '1';
+                    }
                     await sleep(100);
                 }
                 await sleep(300);
@@ -1187,7 +1200,7 @@ MathJax = {
         updateLog();
         renderProductChain(-1);
 
-        // Show lambda control only for retrace
+        // Show lambda control only for retrace (V-trace doesn't use lambda)
         lambdaControl.style.display = currentAlgo === 'retrace' ? 'block' : 'none';
     }
 
@@ -1229,31 +1242,3 @@ MathJax = {
     // Initial render
     reset();
 </script>
-
-      </div>
-    </div>
-  </div>
-</article>
-
-  </main>
-
-  <footer class="site-footer">
-  <div class="container">
-    <div class="footer-content">
-      <p>&copy; 2026 Mark Towers</p>
-      <div class="footer-links">
-        
-        <a href="https://github.com/pseudo-rnd-thoughts" target="_blank" rel="noopener">GitHub</a>
-        
-        
-        <a href="mailto:mark@anyscale.com">Email</a>
-        
-      </div>
-    </div>
-  </div>
-</footer>
-
-
-  <script src="/assets/js/main.js"></script>
-</body>
-</html>

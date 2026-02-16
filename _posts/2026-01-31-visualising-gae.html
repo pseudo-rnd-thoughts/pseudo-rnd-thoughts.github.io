@@ -9,22 +9,25 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
 <section id="policy-gradient">
     <h2>How Do We Improve a Policy?</h2>
     <p>
-        Suppose we have a policy and roll it out, collecting states, actions, and rewards. Some actions worked out, increasing our return, and others didn't. To improve, we want to increase the likeliness of taking the "good" actions in the future, and the "bad" actions less likely. But how do we turn that into a gradient we can backpropagate?
+        Suppose we have a policy and roll it out, recording the states, actions, and rewards encountered. Some actions worked out, increasing our return, and others didn't. To improve our policy, we want to increase the likeliness of taking the "good" actions in the future, and to make the "bad" actions less likely. But how do we turn that into a gradient we can backpropagate for the policy?
     </p>
     <p>
-        The Policy Gradient Theorem gives us the answer. For each action in our rollout, we multiply two things together: the direction that makes the action more likely, and a score for how good the action was. Summing over all timesteps gives us the gradient of our expected return:
+        The Policy Gradient Theorem gives us the answer. For each action in our rollout, we multiply two things together: the direction that makes the action more likely, and a score for how good the action was. Summing over all timesteps gives us the gradient of our expected return. Below the fancy mathematical equation for that:
     </p>
     <div class="math-block">
         \[\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta} \left[ \sum_{t=0}^{T} \nabla_\theta \log \pi_\theta(a_t | s_t) \cdot A_t \right]\]
     </div>
     <p>
-        The first term, \(\nabla_\theta \log \pi_\theta(a_t | s_t)\), points in the direction that increases the probability of action \(a_t\). The second term, \(A_t\), is the advantage representing how much better this action was compared to what the policy would normally do from that state:
+        The first term, \(\nabla_\theta \log \pi_\theta(a_t | s_t)\), points in the direction that increases the probability of action \(a_t\). The second term, \(A_t\), is the <strong>advantage</strong> - how much better this action was compared to what the policy would normally do. Positive advantage means "do more of this", negative means "do less".
+    </p>
+    <p>
+        But how do we actually compute the advantage? By definition, it is the difference between the value of taking a specific action and the average value across all actions:
     </p>
     <div class="math-block highlight">
         \[A(s_t, a_t) = Q(s_t, a_t) - V(s_t)\]
     </div>
     <p>
-        \(Q(s_t, a_t)\) is the expected return from taking action \(a_t\) in state \(s_t\), and \(V(s_t) = \mathbb{E}_{a \sim \pi}[Q(s_t, a)]\) is the expected return averaged over all actions the policy might take. Positive advantage means "do more of this", negative means "do less".
+        Here \(Q(s_t, a_t)\) is the expected return from taking action \(a_t\) in state \(s_t\), and \(V(s_t) = \mathbb{E}_{a \sim \pi}[Q(s_t, a)]\) is the expected return averaged over all actions the policy might take. We have a learned estimate of \(V\), but we need to estimate \(Q\) from the rewards we actually observed in our rollout. How we do that estimation is where things get interesting.
     </p>
 </section>
 
@@ -35,10 +38,10 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
     </p>
     <ul>
         <li>
-            <span class="text-highlight">Monte Carlo</span> only uses the rewards collected in the rollout for the Q-value target ensuring that it correct on average (i.e., unbiased) but each rollout's rewards are noisy (from the randomness in the policy and environment) means that different rollouts give very different totals, resulting in high variance.
+            <span class="text-highlight">Monte Carlo</span> only uses the rewards collected in the rollout for the Q-value target ensuring that it correct on average (i.e., unbiased) but each rollout's rewards are noisy (from the randomness in the policy and environment) means that different rollouts give very different returns, resulting in high variance.
         </li>
         <li>
-            <span class="text-highlight">Temporal Difference (TD) Error</span> replaces the future rewards after \(t+1\) with estimate of their expected sum \(V(s_{t+1})\). This compresses all that noise across rollouts into a stable, deterministic output, giving low variance. But if the learned \(V\) is inaccurate or systematically shifted from the correct scale it will be <strong>biased</strong>.
+            <span class="text-highlight">Temporal Difference (TD) Error</span> replaces the future rewards after \(t+1\) with estimate of their expected sum \(V(s_{t+1})\). This compresses all that noise across rollouts into a stable, deterministic output, giving low variance. But if the learned \(V\) is inaccurate or systematically shifted from the correct scale it will be biased.
         </li>
     </ul>
 
@@ -92,7 +95,7 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
     </div>
 
     <p>
-        The key insight of GAE is to combine TD errors from multiple time horizons. Instead of using just the immediate 1-step TD error (which is biased but stable) or the full Monte Carlo return (which is unbiased but noisy), GAE takes a weighted average of all future TD errors. The parameter \(\lambda\) controls how quickly we discount future errors: with \(\lambda = 0\), we only use the immediate error, while \(\lambda = 1\) uses all future errors equally, recovering something close to Monte Carlo.
+        The key insight of GAE is instead of using just the immediate 1-step TD error (which is biased but stable) or the full Monte Carlo return (which is unbiased but noisy), GAE takes a weighted average of all future TD errors. The parameter \(\lambda\) controls how quickly we discount future errors: with \(\lambda = 0\), we only use the immediate error, while \(\lambda = 1\) uses all future errors equally, recovering something close to Monte Carlo.
     </p>
 
     <h3>GAE Formula</h3>
@@ -103,7 +106,7 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
         \[A_t^{\text{GAE}(\gamma, \lambda)} = \sum_{k=0}^{\infty} (\gamma \lambda)^k \delta_{t+k}\]
     </div>
     <p>
-        In practice, we compute this efficiently using a backward pass through the trajectory. Starting from the last timestep (where \(A_T = \delta_T\)) and working backwards:
+        In practice, we efficiently compute this backward across the trajectory, starting from the last timestep (where \(A_T = \delta_T\)) and working backwards:
     </p>
     <div class="math-block">
         \[A_t = \delta_t + \gamma \lambda \cdot A_{t+1}\]
@@ -154,14 +157,6 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
     <div class="step-log" id="step-log">
         <div class="step-log-title">Computation Steps</div>
         <div id="log-entries">
-            <div class="log-entry visible">
-                <span class="log-step">Step 1:</span>
-                <span class="log-formula">Compute TD errors \(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\)</span>
-            </div>
-            <div class="log-entry visible">
-                <span class="log-step">Step 2:</span>
-                <span class="log-formula">Compute GAE backward: \(A_t = \delta_t + \gamma\lambda A_{t+1}\)</span>
-            </div>
         </div>
     </div>
 </section>
@@ -169,7 +164,7 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
 <section id="implementation">
     <h2>Implementation</h2>
     <p>
-        Here's how GAE is typically implemented in practice. The key insight is computing advantages in reverse order. We also need to handle episode boundaries correctly, since a batch of experience may span multiple episodes.
+        Here's how GAE is typically implemented in practice. The key insight is computing advantages in reverse order. We also need to handle episode boundaries correctly, since a rollout might span multiple episodes.
     </p>
     <p>
         Episodes can end in two ways: <strong>termination</strong> (a true terminal state, e.g. death or reaching the goal) or <strong>truncation</strong> (a time limit was hit). These require different treatment:
@@ -195,10 +190,10 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
     deltas = rewards + gamma * next_values - values[:-<span class="code-number">1</span>]
 
     <span class="code-comment"># Reset at any episode boundary (terminated or truncated)</span>
-    dones = terminated | truncated
+    episode_over = terminated | truncated
 
     <span class="code-keyword">for</span> t <span class="code-keyword">in</span> reversed(range(T)):
-        gae = deltas[t] + gamma * lambda_ * (~dones[t]) * gae
+        gae = deltas[t] + gamma * lambda_ * (~episode_over[t]) * gae
         advantages[t] = gae
 
     <span class="code-keyword">return</span> advantages</code></pre>
@@ -236,9 +231,9 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
 <script>
     // Rollout data
     const rolloutData = {
-        states: ['s₀', 's₁', 's₂', 's₃', 's₄', 's₅'],
-        values: [2.5, 3.1, 2.8, 4.2, 3.0, 0], // V(s_5) = 0 (terminal)
-        rewards: [1.0, -0.5, 2.0, 0.5, -1.0]  // r_0 to r_4
+        states: ['s₀', 's₁', 's₂', 's₃', 's₄'],
+        values: [2.5, 3.1, 2.8, 4.2, 0], // V(s_4) = 0 (terminal)
+        rewards: [1.0, -0.5, 2.0, 0.5]  // r_0 to r_3
     };
 
     let gamma = 0.99;
@@ -320,7 +315,7 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
         for (let t = 0; t < deltas.length; t++) {
             html += `
                 <div class="computation-cell">
-                    <span class="symbol">δ${t}</span>
+                    <span class="symbol">δ<sub>${t}</sub></span>
                     <span class="value td" id="td-${t}">${deltas[t].toFixed(3)}</span>
                 </div>
             `;
@@ -336,7 +331,7 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
             const gaeClass = advantages[t] >= 0 ? 'gae-positive' : 'gae-negative';
             html += `
                 <div class="computation-cell">
-                    <span class="symbol">A${t}</span>
+                    <span class="symbol">A<sub>${t}</sub></span>
                     <span class="value ${gaeClass}" id="gae-${t}">${advantages[t].toFixed(3)}</span>
                 </div>
             `;
@@ -367,18 +362,25 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
             el.classList.remove('active', 'computed');
         });
 
-        // Clear previous log entries (keep the first two)
-        const existingEntries = logEntries.querySelectorAll('.log-entry');
-        existingEntries.forEach((entry, i) => {
-            if (i >= 2) entry.remove();
-        });
+        // Clear log entries
+        logEntries.innerHTML = '';
 
         // Animate TD errors (forward)
         for (let t = 0; t < deltas.length; t++) {
             const stateNode = document.getElementById(`state-${t}`);
             stateNode.classList.add('active');
 
-            await sleep(300);
+            const r = rolloutData.rewards[t];
+            const vNext = rolloutData.values[t + 1];
+            const vCurr = rolloutData.values[t];
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            logEntry.innerHTML = `<span class="log-step">δ<sub>${t}</sub>:</span> <span class="log-formula">${r.toFixed(1)} + ${gamma}×${vNext.toFixed(1)} − ${vCurr.toFixed(1)} = </span><span class="log-result">${deltas[t].toFixed(3)}</span>`;
+            logEntries.appendChild(logEntry);
+            await sleep(100);
+            logEntry.classList.add('visible');
+
+            await sleep(200);
 
             const tdValue = document.getElementById(`td-${t}`);
             tdValue.classList.add('visible');
@@ -401,9 +403,9 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
 
             let logHtml;
             if (t === deltas.length - 1) {
-                logHtml = `<span class="log-step">t=${t}:</span> <span class="log-formula">A${t} = δ${t} = </span><span class="log-result">${advantages[t].toFixed(3)}</span>`;
+                logHtml = `<span class="log-step">A<sub>${t}</sub>:</span> <span class="log-formula">δ<sub>${t}</sub> = </span><span class="log-result">${advantages[t].toFixed(3)}</span>`;
             } else {
-                logHtml = `<span class="log-step">t=${t}:</span> <span class="log-formula">A${t} = ${deltas[t].toFixed(3)} + ${gamma}×${lambda}×${prevGae.toFixed(3)} = </span><span class="log-result">${advantages[t].toFixed(3)}</span>`;
+                logHtml = `<span class="log-step">A<sub>${t}</sub>:</span> <span class="log-formula">${deltas[t].toFixed(3)} + ${gamma}×${lambda}×${prevGae.toFixed(3)} = </span><span class="log-result">${advantages[t].toFixed(3)}</span>`;
             }
 
             const logEntry = document.createElement('div');
@@ -430,22 +432,48 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
         resetBtn.disabled = false;
     }
 
+    // Render computed log entries
+    function renderLogEntries() {
+        const deltas = computeTDErrors();
+        const advantages = computeGAE(deltas);
+        let html = '';
+
+        // TD error entries
+        for (let t = 0; t < deltas.length; t++) {
+            const r = rolloutData.rewards[t];
+            const vNext = rolloutData.values[t + 1];
+            const vCurr = rolloutData.values[t];
+            html += `<div class="log-entry visible">
+                <span class="log-step">δ<sub>${t}</sub>:</span>
+                <span class="log-formula">${r.toFixed(1)} + ${gamma}×${vNext.toFixed(1)} − ${vCurr.toFixed(1)} = </span><span class="log-result">${deltas[t].toFixed(3)}</span>
+            </div>`;
+        }
+
+        // GAE entries (backward)
+        let gae = 0;
+        for (let t = deltas.length - 1; t >= 0; t--) {
+            const prevGae = gae;
+            gae = deltas[t] + gamma * lambda * gae;
+            let formula;
+            if (t === deltas.length - 1) {
+                formula = `δ<sub>${t}</sub> = `;
+            } else {
+                formula = `${deltas[t].toFixed(3)} + ${gamma}×${lambda}×${prevGae.toFixed(3)} = `;
+            }
+            html += `<div class="log-entry visible">
+                <span class="log-step">A<sub>${t}</sub>:</span>
+                <span class="log-formula">${formula}</span><span class="log-result">${advantages[t].toFixed(3)}</span>
+            </div>`;
+        }
+
+        logEntries.innerHTML = html;
+    }
+
     // Reset visualisation
     function reset() {
         renderRollout();
         renderComputationRows();
-
-        // Reset log
-        logEntries.innerHTML = `
-            <div class="log-entry visible">
-                <span class="log-step">Step 1:</span>
-                <span class="log-formula">Compute TD errors δₜ = rₜ + γV(sₜ₊₁) - V(sₜ)</span>
-            </div>
-            <div class="log-entry visible">
-                <span class="log-step">Step 2:</span>
-                <span class="log-formula">Compute GAE backward: Aₜ = δₜ + γλAₜ₊₁</span>
-            </div>
-        `;
+        renderLogEntries();
 
         // Show all values immediately
         document.querySelectorAll('.computation-cell .value').forEach(el => {
@@ -462,6 +490,7 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
         gamma = parseFloat(e.target.value);
         gammaDisplay.textContent = gamma.toFixed(2);
         renderComputationRows();
+        renderLogEntries();
         document.querySelectorAll('.computation-cell .value').forEach(el => {
             el.classList.add('visible');
         });
@@ -471,6 +500,7 @@ excerpt: "Generalised Advantage Estimation (GAE) is a critical component of PPO 
         lambda = parseFloat(e.target.value);
         lambdaDisplay.textContent = lambda.toFixed(2);
         renderComputationRows();
+        renderLogEntries();
         document.querySelectorAll('.computation-cell .value').forEach(el => {
             el.classList.add('visible');
         });

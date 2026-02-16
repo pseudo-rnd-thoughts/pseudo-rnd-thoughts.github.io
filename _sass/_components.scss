@@ -117,6 +117,11 @@ a.publication-title {
   margin-bottom: var(--spacing-xs);
 }
 
+.publication-authors .me {
+  color: var(--accent-primary);
+  font-weight: 600;
+}
+
 .publication-meta {
   font-size: 0.8125rem;
   color: var(--text-muted);
@@ -128,6 +133,10 @@ a.publication-title {
 
 .publication-year {
   font-family: var(--font-mono);
+}
+
+.publication-citations {
+  color: var(--accent-orange);
 }
 
 // Buttons
@@ -232,6 +241,6 @@ a.publication-title {
 
 .bio-tagline {
   font-size: 1.125rem;
-  color: var(--text-muted) !important;
+  color: var(--text-primary) !important;
   margin-bottom: var(--spacing-lg) !important;
 }

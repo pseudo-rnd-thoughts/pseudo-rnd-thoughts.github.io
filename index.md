@@ -9,10 +9,10 @@ title: null
   </div>
   <div class="bio-content">
     <h1>Hi, I'm Mark</h1>
-    <p class="bio-tagline">Reinforcement learning researcher with a PhD in Explainable RL</p>
-    <p>Currently, I'm a Software Engineer at <a href="https://www.anyscale.com/">Anyscale</a>, working on <a href="https://docs.ray.io/en/latest/rllib/index.html">RLlib</a> helping to scale reinforcement learning agents for real-world problems.</p>
-    <p>In my free time, I lead maintenance of <a href="https://github.com/Farama-Foundation/Gymnasium">Gymnasium</a> & <a href="https://github.com/openai/gym">Gym</a>, the standard APIs powering RL research worldwide, and am a core team member at the <a href="https://farama.org/">Farama Foundation</a>.</p>
-    <p>In 2025, I completed a <a href="https://eprints.soton.ac.uk/502074/1/archival_phd_thesis.pdf">PhD</a> in Explainable RL at the University of Southampton, resulting in numerous published papers on explaining agents' decision-making. A selection of my publications is listed below.</p>
+    <p class="bio-tagline">Reinforcement Learning Engineer with a PhD in Explainable RL</p>
+    <p>Currently, I'm a Software Engineer at <a href="https://www.anyscale.com/">Anyscale</a>, developing <a href="https://docs.ray.io/en/latest/rllib/index.html">RLlib</a> allowing engineers to scale reinforcement learning training from 1 to 64 GPUs for real-world problems.</p>
+    <p>In my free time, I lead maintenance of <a href="https://github.com/Farama-Foundation/Gymnasium">Gymnasium</a> & <a href="https://github.com/openai/gym">Gym</a>, the standard APIs powering RL research worldwide, and am a core team member at the <a href="https://farama.org/">Farama Foundation</a>. I further contribute to a range of open-source mostly RL related software. </p>
+    <p>In 2025, I completed a <a href="https://eprints.soton.ac.uk/502074/1/archival_phd_thesis.pdf">PhD</a> in Explainable RL at the University of Southampton, resulting in numerous published papers on explaining agents' decision-making, with a selection listed below.</p>
   </div>
 </div>
 
@@ -70,38 +70,38 @@ For a complete list, see my [Google Scholar profile](https://scholar.google.com/
 
 <ul class="publications-list">
   <li class="publication-item">
-    <a class="publication-title" href="https://arxiv.org/abs/2407.17032">Gymnasium: A standard interface for reinforcement learning environments</a>
-    <div class="publication-authors"><b>M Towers</b>, A Kwiatkowski, J Terry, et al.</div>
-    <div class="publication-meta"><span class="publication-venue">arXiv preprint</span> · <span class="publication-year">2024</span></div>
-  </li>
-
-  <li class="publication-item">
-    <a class="publication-title" href="https://proceedings.neurips.cc/paper_files/paper/2023/hash/18bf3d8e5bcf4a6d59e5c2c055cfd23e-Abstract-Datasets_and_Benchmarks.html">Minigrid & Miniworld: Modular & customizable reinforcement learning environments for goal-oriented tasks</a>
-    <div class="publication-authors">M Chevalier-Boisvert, B Dai, <b>M Towers</b>, et al.</div>
-    <div class="publication-meta"><span class="publication-venue">NeurIPS</span> · <span class="publication-year">2023</span></div>
+    <a class="publication-title" href="https://arxiv.org/abs/2407.17032">Gymnasium: A Standard Interface for Reinforcement Learning Environments</a>
+    <div class="publication-authors"><span class="me">M Towers</span>, A Kwiatkowski, J Terry, et al.</div>
+    <div class="publication-meta"><span class="publication-venue">NeurIPS D&S Track</span> · <span class="publication-year">2025</span> · <span class="publication-citations">1250+ citations</span></div>
   </li>
 
   <li class="publication-item">
     <a class="publication-title" href="https://arxiv.org/abs/2408.08230">Explaining an Agent's Future Beliefs through Temporally Decomposing Future Reward Estimators</a>
-    <div class="publication-authors"><b>M Towers</b>, Y Du, C Freeman, TJ Norman</div>
+    <div class="publication-authors"><span class="me">M Towers</span>, Y Du, C Freeman, TJ Norman</div>
     <div class="publication-meta"><span class="publication-venue">ECAI</span> · <span class="publication-year">2024</span></div>
   </li>
 
   <li class="publication-item">
     <a class="publication-title" href="https://arxiv.org/pdf/2510.16956">A Comparative User Evaluation of XRL Explanations using Goal Identification</a>
-    <div class="publication-authors"><b>M Towers</b>, Y Du, C Freeman, TJ Norman</div>
-    <div class="publication-meta"><span class="publication-venue">ECAI EXCD</span> · <span class="publication-year">2024</span></div>
+    <div class="publication-authors"><span class="me">M Towers</span>, Y Du, C Freeman, TJ Norman</div>
+    <div class="publication-meta"><span class="publication-venue">ECAI EXCD</span> · <span class="publication-year">2025</span></div>
   </li>
 
   <li class="publication-item">
-    <a class="publication-title" href="https://arxiv.org/abs/2411.03820">Beyond the Rainbow: High performance deep reinforcement learning on a desktop PC</a>
-    <div class="publication-authors">T Clark, <b>M Towers</b>, C Evers, J Hare</div>
+    <a class="publication-title" href="https://proceedings.neurips.cc/paper_files/paper/2023/hash/18bf3d8e5bcf4a6d59e5c2c055cfd23e-Abstract-Datasets_and_Benchmarks.html">Minigrid & Miniworld: Modular & Customizable Reinforcement Learning Environments for Goal-Oriented Tasks</a>
+    <div class="publication-authors">M Chevalier-Boisvert, B Dai, <span class="me">M Towers</span>, et al.</div>
+    <div class="publication-meta"><span class="publication-venue">NeurIPS D&S Track</span> · <span class="publication-year">2023</span> · <span class="publication-citations">400+ citations</span></div>
+  </li>
+
+  <li class="publication-item">
+    <a class="publication-title" href="https://arxiv.org/abs/2411.03820">Beyond the Rainbow: High Performance Deep Reinforcement Learning on a Desktop PC</a>
+    <div class="publication-authors">T Clark, <span class="me">M Towers</span>, C Evers, J Hare</div>
     <div class="publication-meta"><span class="publication-venue">ICML</span> · <span class="publication-year">2024</span></div>
   </li>
 
   <li class="publication-item">
     <a class="publication-title" href="https://arxiv.org/abs/2501.19256">Objective Metrics for Human-Subjects Evaluation in Explainable Reinforcement Learning</a>
-    <div class="publication-authors">B Gyevnar, <b>M Towers</b></div>
+    <div class="publication-authors">B Gyevnar, <span class="me">M Towers</span></div>
     <div class="publication-meta"><span class="publication-venue">arXiv preprint</span> · <span class="publication-year">2025</span></div>
   </li>
 </ul>

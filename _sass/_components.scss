@@ -193,12 +193,15 @@ a.publication-title {
   margin-bottom: var(--spacing-3xl);
 }
 
-// Bio section (side-by-side layout)
+// Bio section (side-by-side top, full-width bottom)
 .bio-section {
+  margin-bottom: var(--spacing-2xl);
+}
+
+.bio-top {
   display: flex;
   gap: var(--spacing-2xl);
   align-items: flex-start;
-  margin-bottom: var(--spacing-2xl);
 
   @media (max-width: 768px) {
     flex-direction: column;
@@ -228,6 +231,19 @@ a.publication-title {
     margin-top: 0;
     margin-bottom: var(--spacing-xs);
   }
+
+  p {
+    color: var(--text-secondary);
+    margin-bottom: var(--spacing-md);
+
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+}
+
+.bio-full {
+  margin-top: var(--spacing-lg);
 
   p {
     color: var(--text-secondary);

@@ -7,7 +7,6 @@
   function initLightbox() {
     const lightbox = document.getElementById('lightbox');
     const lightboxImg = document.getElementById('lightbox-img');
-    const lightboxCaption = document.getElementById('lightbox-caption');
     const closeBtn = document.querySelector('.lightbox-close');
     const masonryItems = document.querySelectorAll('.masonry-item');
 
@@ -16,12 +15,8 @@
     // Open lightbox
     masonryItems.forEach(item => {
       item.addEventListener('click', function() {
-        const img = this.querySelector('img');
-        const caption = this.dataset.caption || '';
-
-        lightboxImg.src = img.src;
-        lightboxImg.alt = img.alt;
-        lightboxCaption.textContent = caption;
+        lightboxImg.src = this.dataset.full;
+        lightboxImg.alt = '';
         lightbox.classList.add('active');
         document.body.style.overflow = 'hidden';
       });

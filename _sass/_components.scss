@@ -233,7 +233,7 @@ a.publication-title {
   }
 
   p {
-    color: var(--text-secondary);
+    color: var(--text-primary);
     margin-bottom: var(--spacing-md);
 
     &:last-child {
@@ -246,7 +246,7 @@ a.publication-title {
   margin-top: var(--spacing-lg);
 
   p {
-    color: var(--text-secondary);
+    color: var(--text-primary);
     margin-bottom: var(--spacing-md);
 
     &:last-child {
@@ -257,6 +257,5 @@ a.publication-title {
 
 .bio-tagline {
   font-size: 1.125rem;
-  color: var(--text-primary) !important;
   margin-bottom: var(--spacing-lg) !important;
 }

@@ -1,0 +1,985 @@
+---
+layout: post
+title: "The Nuances of Autoreset Modes and Vectorised Rollouts"
+date: 2026-03-12
+math: true
+excerpt: "Next-Step and Same-Step autoreset handle episode boundaries differently. That difference quietly changes what ends up in your rollout buffer and how GAE must be computed."
+---
+
+<style>
+    .rollout-compare {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+        margin: 24px 0;
+    }
+
+    .mode-panel {
+        background: var(--bg-primary);
+        border: 1px solid var(--accent-border);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .mode-panel-header {
+        padding: 12px 16px;
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--accent-border);
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: var(--text-primary);
+    }
+
+    .timeline-scroll {
+        overflow-x: auto;
+        padding: 16px;
+    }
+
+    .timeline {
+        display: flex;
+        gap: 0;
+        min-width: max-content;
+    }
+
+    .tl-step {
+        width: 80px;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: 0 4px;
+    }
+
+    .tl-step.invalid {
+        background: rgba(249, 117, 131, 0.06);
+        border-radius: 8px;
+    }
+
+    .tl-label {
+        font-size: 0.7rem;
+        color: var(--text-muted);
+        font-family: 'JetBrains Mono', monospace;
+        padding: 2px 0;
+        text-align: center;
+        width: 100%;
+        border-bottom: 1px solid var(--accent-border);
+        margin-bottom: 4px;
+    }
+
+    .tl-node {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 2px solid var(--accent-primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.8rem;
+        font-weight: 600;
+        background: var(--bg-primary);
+        position: relative;
+    }
+
+    .tl-node sub {
+        font-size: 0.78em;
+        line-height: 0;
+        vertical-align: -0.2em;
+    }
+
+    .tl-node.ep2     { border-color: var(--accent-orange); color: var(--accent-orange); }
+    .tl-node.terminal{ border-color: var(--accent-red);    color: var(--accent-red); box-shadow: 0 0 10px rgba(249,117,131,0.3); }
+    .tl-node.stale   { border-color: var(--accent-red);    color: var(--accent-red); opacity: 0.5; }
+
+    .tl-row-label {
+        font-size: 0.68rem;
+        color: var(--text-muted);
+        text-align: right;
+        width: 88px;
+        flex-shrink: 0;
+        padding-right: 8px;
+        line-height: 48px;
+        font-family: 'JetBrains Mono', monospace;
+    }
+
+    .tl-flag {
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 600;
+    }
+    .tl-flag.done  { background: rgba(249,117,131,0.2); color: var(--accent-red); }
+    .tl-flag.false { background: var(--bg-tertiary); color: var(--text-muted); }
+
+    .tl-reward {
+        font-size: 0.72rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: 600;
+    }
+    .tl-reward.pos { color: var(--accent-green); }
+    .tl-reward.neg { color: var(--accent-red); }
+    .tl-reward.zero { color: var(--text-muted); }
+
+    .tl-valid {
+        font-size: 0.72rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    .tl-valid.ok    { background: rgba(126,231,135,0.15); color: var(--accent-green); }
+    .tl-valid.skip  { background: rgba(249,117,131,0.15); color: var(--accent-red); }
+
+    .tl-row {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        min-width: max-content;
+        margin-bottom: 4px;
+    }
+
+    .tl-divider {
+        width: 1px;
+        height: 60px;
+        background: rgba(249,117,131,0.5);
+        flex-shrink: 0;
+        align-self: center;
+        margin: 0 2px;
+    }
+
+    .scenario-toggle {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 20px;
+    }
+
+    .scenario-btn {
+        padding: 6px 16px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid var(--accent-border);
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+        transition: all 0.2s;
+        font-family: var(--font-body);
+    }
+    .scenario-btn.active {
+        background: var(--accent-primary);
+        color: var(--bg-primary);
+        border-color: var(--accent-primary);
+    }
+    .tab-separator {
+        width: 1px;
+        background: var(--accent-border);
+        margin: 4px 4px;
+    }
+    .radio-tab-label {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px 6px 10px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid transparent;
+        color: var(--text-secondary);
+        font-family: var(--font-body);
+        transition: all 0.2s;
+    }
+    .radio-tab-label:hover {
+        border-color: var(--accent-border);
+        background: var(--bg-tertiary);
+    }
+    .radio-tab-label input[type="radio"] {
+        accent-color: var(--accent-primary);
+        cursor: pointer;
+        width: 14px;
+        height: 14px;
+    }
+    .radio-tab-label:has(input:checked) {
+        border-color: var(--accent-border);
+        background: var(--bg-tertiary);
+        color: var(--text-primary);
+    }
+
+    .boundary-annotation {
+        font-size: 0.7rem;
+        color: var(--accent-red);
+        text-align: center;
+        font-style: italic;
+        min-width: 80px;
+    }
+
+    .bs-type {
+        font-size: 0.68rem;
+        color: var(--text-muted);
+        text-align: center;
+        font-family: 'JetBrains Mono', monospace;
+    }
+    .bs-type.correct { color: var(--accent-green); }
+    .bs-type.wrong   { color: var(--accent-red); }
+    .bs-type.zero    { color: var(--text-muted); }
+
+    .stale-badge {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        width: 18px;
+        height: 18px;
+        background: var(--accent-red);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.6rem;
+        color: white;
+        font-weight: 700;
+    }
+
+    .info-badge {
+        position: absolute;
+        top: -8px;
+        right: -8px;
+        width: 18px;
+        height: 18px;
+        background: var(--accent-orange);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.6rem;
+        color: var(--bg-primary);
+        font-weight: 700;
+    }
+
+    .tl-ep-divider {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 12px;
+        flex-shrink: 0;
+    }
+
+    .ep-line {
+        width: 2px;
+        flex: 1;
+        background: var(--accent-border);
+    }
+
+    /* Legend */
+    .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin: 16px 0;
+        font-size: 0.78rem;
+        color: var(--text-muted);
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .legend-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 2px solid;
+        flex-shrink: 0;
+    }
+    .legend-dot.ep1    { border-color: var(--accent-primary); }
+    .legend-dot.ep2    { border-color: var(--accent-orange); }
+    .legend-dot.term   { border-color: var(--accent-red); background: rgba(249,117,131,0.2); }
+    .legend-dot.stale  { border-color: var(--accent-red); opacity: 0.5; }
+
+    /* Code tabs — outer card */
+    .code-tabs {
+        border: 1px solid var(--accent-border);
+        border-radius: 8px;
+        overflow: hidden;
+        margin: 1.5rem 0;
+    }
+
+    /* Tab strip */
+    .code-tabs .code-tab-strip {
+        display: flex;
+        gap: 0;
+        margin-bottom: 0;
+        padding: 0 8px;
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--accent-border);
+    }
+
+    /* Flat tab buttons — override scenario-btn pill style inside code-tabs only */
+    .code-tabs .code-tab-strip .scenario-btn {
+        padding: 8px 14px;
+        border-radius: 0;
+        border: none;
+        border-bottom: 2px solid transparent;
+        background: transparent;
+        color: var(--text-muted);
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        font-weight: 500;
+        margin-bottom: -1px;
+        transition: color 0.2s, border-color 0.2s;
+    }
+    .code-tabs .code-tab-strip .scenario-btn:hover {
+        color: var(--text-secondary);
+        border-bottom-color: var(--accent-border);
+    }
+    .code-tabs .code-tab-strip .scenario-btn.active {
+        color: var(--text-primary);
+        background: transparent;
+        border-color: transparent;
+        border-bottom-color: var(--accent-primary);
+    }
+
+    /* Description caption */
+    .code-tab-description {
+        padding: 10px 16px 8px;
+        margin: 0;
+        font-size: 0.82rem;
+        color: var(--text-muted);
+        line-height: 1.55;
+        border-bottom: 1px solid var(--accent-border);
+    }
+
+    /* Code block: flush inside the card */
+    .code-tab-panel pre {
+        border: none;
+        border-radius: 0;
+        margin: 0;
+        background: var(--bg-secondary);
+    }
+
+    .diff-view {
+        background: var(--bg-secondary);
+        border: none;
+        border-radius: 0;
+        padding: 16px;
+        margin: 0;
+        overflow-x: auto;
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 0.82rem;
+        line-height: 1.6;
+    }
+
+    .diff-line {
+        display: block;
+        white-space: pre;
+        padding: 0 2px;
+    }
+
+
+    .diff-line.diff-add {
+        background: rgba(126, 231, 135, 0.12);
+        color: var(--accent-green);
+    }
+
+    .diff-line.diff-remove {
+        background: rgba(249, 117, 131, 0.12);
+        color: var(--accent-red);
+    }
+
+    .diff-line.diff-unchanged {
+        color: var(--text-secondary);
+    }
+
+    /* Vector env visualisation */
+    .vec-env-viz {
+        display: flex;
+        gap: 16px;
+        margin: 24px 0;
+    }
+    .vec-env-viz .mode-panel { flex: 1; min-width: 0; }
+    .env-tracks { padding: 12px 16px 16px; }
+    .env-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+    .env-row-label {
+        font-size: 0.68rem;
+        color: var(--text-muted);
+        font-family: 'JetBrains Mono', monospace;
+        width: 38px;
+        flex-shrink: 0;
+        text-align: right;
+    }
+    .env-track {
+        flex: 1;
+        height: 22px;
+        background: var(--bg-tertiary);
+        border-radius: 4px;
+        position: relative;
+        overflow: hidden;
+    }
+    .env-segment {
+        position: absolute;
+        top: 0;
+        height: 100%;
+        border-radius: 0;
+        transition: width 0.08s linear;
+    }
+    .env-segment.ep1 { background: var(--accent-primary); opacity: 0.85; }
+    .env-segment.ep2 { background: var(--accent-orange); opacity: 0.85; }
+    .env-segment.ep3 { background: var(--accent-blue); opacity: 0.85; }
+    .env-segment.idle {
+        background: transparent;
+        border-top: 2px dashed;
+        border-bottom: 2px dashed;
+        border-color: var(--text-muted);
+        opacity: 0.4;
+    }
+    .vec-env-time {
+        position: relative;
+        height: 20px;
+        margin: 0 0 6px 48px;
+        border-left: 1px solid var(--accent-border);
+        border-bottom: 1px solid var(--accent-border);
+    }
+    .vec-env-playhead {
+        position: absolute;
+        top: 0;
+        width: 1px;
+        height: 100%;
+        background: var(--text-muted);
+        opacity: 0.5;
+        transition: left 0.08s linear;
+    }
+    .vec-env-controls {
+        text-align: center;
+        margin-top: 12px;
+    }
+    @media (max-width: 768px) {
+        .vec-env-viz { flex-direction: column; }
+    }
+</style>
+
+<section id="intro">
+    <h2>The Value of Autoresetting</h2>
+    <p>
+        Vectorised environments contain multiple sub-environments each creating their own episode. When one of these episodes end, it's sub-environment needs to be reset before a new episode can begin. We could wait until all the sub-environments have completed their episodes then calling <code>env.reset()</code> on them all however this would be incredibly inefficient if the environment contains episodes with numerous different lengths. A solution to this is to reset a sub-environment as soon as it finishes, referred to as autoresetting.
+    </p>
+    <div class="vec-env-viz">
+        <div class="mode-panel">
+            <div class="mode-panel-header">Waiting until all episodes are finished</div>
+            <div class="env-tracks">
+                <div class="vec-env-time"><div class="vec-env-playhead" id="playhead-no"></div></div>
+                <div class="env-row">
+                    <div class="env-row-label">env 1</div>
+                    <div class="env-track" id="no-env-0"></div>
+                </div>
+                <div class="env-row">
+                    <div class="env-row-label">env 2</div>
+                    <div class="env-track" id="no-env-1"></div>
+                </div>
+                <div class="env-row">
+                    <div class="env-row-label">env 3</div>
+                    <div class="env-track" id="no-env-2"></div>
+                </div>
+            </div>
+        </div>
+        <div class="mode-panel">
+            <div class="mode-panel-header">Reset as soon as episode is finished</div>
+            <div class="env-tracks">
+                <div class="vec-env-time"><div class="vec-env-playhead" id="playhead-ar"></div></div>
+                <div class="env-row">
+                    <div class="env-row-label">env 1</div>
+                    <div class="env-track" id="ar-env-0"></div>
+                </div>
+                <div class="env-row">
+                    <div class="env-row-label">env 2</div>
+                    <div class="env-track" id="ar-env-1"></div>
+                </div>
+                <div class="env-row">
+                    <div class="env-row-label">env 3</div>
+                    <div class="env-track" id="ar-env-2"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <p>
+        The challenge is that there are two subtly different ways of implementing this autoresetting functionality, referred to as Next-Step and Same-Step in Gymnasium. The difference is not just an implementation detail, it directly affects the observations and bootstrap values in your rollout buffer, and therefore how GAE, VTrace, Retrace and other training algorithms must be computed.
+    </p>
+</section>
+
+<section id="difference">
+    <h2>How the Two Modes Differ</h2>
+    <p>
+        Both modes autoreset, but they answer a single question differently: when a sub-environment steps, and it's episode ends, should it immediately reset returning the new episode's observations, or return the terminated observation waiting to the next timestep to reset. That timing difference
+        determines where and when the terminal and reset observation are returned.
+    </p>
+
+    <div style="margin: 24px 0; overflow-x: auto;">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 750 225" style="width:100%;max-width:750px;display:block;margin:0 auto;">
+            <defs>
+                <style>
+                    .mode-text {
+                        fill: var(--text-primary);
+                        font-weight: bold;
+                        font-size: 18px;
+                        text-anchor: end;
+                    }
+                    .label-text {
+                        fill: var(--text-primary);
+                        font-size: 14px;
+                        text-anchor: middle;
+                    }
+                    .state-label {
+                        fill: var(--text-primary);
+                        font-family: 'JetBrains Mono', monospace;
+                        font-size: 12px;
+                        text-anchor: middle;
+                    }
+                    .code-text {
+                        font-family: 'JetBrains Mono', monospace;
+                    }
+                    .circle {
+                        stroke-width: 1.5;
+                    }
+                    .terminated {
+                        stroke-width: 3.5;
+                    }
+                    .next-step {
+                        fill: var(--accent-primary);
+                        fill-opacity: 0.2;
+                        stroke: var(--accent-primary);
+                    }
+                    .same-step {
+                        fill: var(--accent-green);
+                        fill-opacity: 0.2;
+                        stroke: var(--accent-green);
+                    }
+                    .reset {
+                        fill: var(--bg-tertiary);
+                        stroke: var(--accent-border);
+                    }
+                    .arrow {
+                        stroke: var(--text-muted);
+                        stroke-width: 1.5;
+                        fill: none;
+                    }
+                    .dashed {
+                        stroke-dasharray: 5,3;
+                    }
+                </style>
+                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                    <polygon points="0 0, 10 3.5, 0 7" style="fill: var(--text-muted)"/>
+                </marker>
+            </defs>
+
+            <!-- Next-Step Mode -->
+            <g transform="translate(160, 0)">
+                <text x="0" y="45" class="mode-text">Next-Step Mode:</text>
+                <circle cx="50"  cy="40" r="20" class="circle next-step"/>
+                <circle cx="150" cy="40" r="20" class="circle next-step"/>
+                <circle cx="250" cy="40" r="20" class="circle next-step terminated"/>
+                <circle cx="350" cy="40" r="20" class="circle reset"/>
+                <circle cx="450" cy="40" r="20" class="circle next-step"/>
+                <circle cx="550" cy="40" r="20" class="circle next-step"/>
+                <!-- State labels -->
+                <text x="50"  y="43" class="state-label">s<tspan dy="3" font-size="9">0</tspan></text>
+                <text x="150" y="43" class="state-label">s<tspan dy="3" font-size="9">1</tspan></text>
+                <text x="250" y="43" class="state-label">s<tspan dy="3" font-size="9">2</tspan></text>
+                <text x="350" y="43" class="state-label">s<tspan dy="3" font-size="9">0</tspan><tspan dy="-3" font-size="11">'</tspan></text>
+                <text x="450" y="43" class="state-label">s<tspan dy="3" font-size="9">1</tspan><tspan dy="-3" font-size="11">'</tspan></text>
+                <text x="550" y="43" class="state-label">s<tspan dy="3" font-size="9">2</tspan><tspan dy="-3" font-size="11">'</tspan></text>
+                <!-- Arrows -->
+                <line x1="70"  y1="40" x2="128" y2="40" class="arrow" marker-end="url(#arrowhead)"/>
+                <line x1="170" y1="40" x2="227" y2="40" class="arrow" marker-end="url(#arrowhead)"/>
+                <line x1="273" y1="40" x2="328" y2="40" class="arrow dashed" marker-end="url(#arrowhead)"/>
+                <line x1="370" y1="40" x2="428" y2="40" class="arrow" marker-end="url(#arrowhead)"/>
+                <line x1="470" y1="40" x2="528" y2="40" class="arrow" marker-end="url(#arrowhead)"/>
+                <!-- Labels -->
+                <text x="250" y="75" class="label-text">Terminated Obs</text>
+                <text x="350" y="75" class="label-text">Reset Obs</text>
+            </g>
+
+            <!-- Same-Step Mode -->
+            <g transform="translate(160, 120)">
+                <text x="0" y="45" class="mode-text">Same-Step Mode:</text>
+                <circle cx="50"  cy="40" r="20" class="circle same-step"/>
+                <circle cx="150" cy="40" r="20" class="circle same-step"/>
+                <!-- State labels for ep1 -->
+                <text x="50"  y="43" class="state-label">s<tspan dy="3" font-size="9">0</tspan></text>
+                <text x="150" y="43" class="state-label">s<tspan dy="3" font-size="9">1</tspan></text>
+                <g transform="translate(250, 40)">
+                    <circle cx="0" cy="-30" r="20" class="circle reset"/>
+                    <text x="0"  y="-27" class="state-label">s<tspan dy="3" font-size="9">0</tspan><tspan dy="-3" font-size="11">'</tspan></text>
+                    <text x="0"  y="3" class="label-text">Reset Obs</text>
+                    <circle cx="0" cy="30"  r="20" class="circle same-step terminated"/>
+                    <text x="85" y="65"  class="label-text">Terminated Obs (in <tspan class="code-text">info["final_obs"]</tspan>)</text>
+                    <text x="0"  y="33"  class="state-label">s<tspan dy="3" font-size="9">2</tspan></text>
+                </g>
+                <circle cx="350" cy="10" r="20" class="circle same-step"/>
+                <circle cx="450" cy="10" r="20" class="circle same-step"/>
+                <!-- State labels for ep2 -->
+                <text x="350" y="13" class="state-label">s<tspan dy="3" font-size="9">1</tspan><tspan dy="-3" font-size="11">'</tspan></text>
+                <text x="450" y="13" class="state-label">s<tspan dy="3" font-size="9">2</tspan><tspan dy="-3" font-size="11">'</tspan></text>
+                <!-- Arrows -->
+                <line x1="70"  y1="40" x2="128" y2="40" class="arrow" marker-end="url(#arrowhead)"/>
+                <line x1="172" y1="38" x2="228" y2="10" class="arrow dashed" marker-end="url(#arrowhead)"/>
+                <line x1="170" y1="40" x2="227" y2="70" class="arrow" marker-end="url(#arrowhead)"/>
+                <line x1="270" y1="10" x2="328" y2="10" class="arrow" marker-end="url(#arrowhead)"/>
+                <line x1="370" y1="10" x2="428" y2="10" class="arrow" marker-end="url(#arrowhead)"/>
+            </g>
+        </svg>
+    </div>
+
+    <h3>Next-Step mode</h3>
+    <p>
+        <strong>The reset is deferred.</strong> When a sub-environment terminates, <code>step()</code> returns the <strong>terminal observation</strong> as <code>next_obs</code>, but  the reset does not happen yet. On the <em>next</em> vector <code>step()</code>call, the sub-environment is reset with the action provided ignored.
+    </p>
+    <p>
+        Importantly, this means that for rollouts, on episode boundaries, the observation / next-observations aren't valid timesteps (as they represent the final and first observations of episodes respectively) to compute an error for. Therefore, the final observation of every episode must be masked out of the training loss.
+    </p>
+    <p>
+        Only calling <code>step</code> or <code>reset</code> within an environment timestep does have throughput advantages in synchronous vectorized environments where the <code>reset()</code> is a meaningfully expensive call, for example, in video games like Atari and simulators. This is because using same-step, described below, if every sub-environment calls <code>step()</code> then wait for any <code>reset()</code> call to happen (which might be very few), then this can add significant time waste as the other sub-environments are idling. In comparison, this additional wait is significantly lower as only one of <code>step()</code> or <code>reset()</code> per timestep. As a result, some high-performance RL vectorizers prefer next-step  due to the compute efficiency.
+    </p>
+
+    <h3>Same-Step mode</h3>
+    <p>
+        <strong>The reset is immediate.</strong> When a sub-environment terminates, the reset happens within the
+        same <code>step()</code> call where the <code>next_obs</code> being the <strong>reset observation</strong> \(s_0'\),
+        and the terminal observation is stored in <code>info["final_obs"]</code>. At the next step, the policy
+        acts directly on \(s_0'\) being that there are no stale observations or masking required.
+    </p>
+    <p>
+        The trade-off appears at <em>truncated</em> boundaries (time limit reached, not truly terminal): since
+        <code>next_obs</code> is already the reset state, you cannot bootstrap \(V(s_\text{last})\) from it
+        directly. You need to run <code>info["final_obs"]</code> through the value network to get the correct
+        bootstrap target.
+    </p>
+
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Property</th>
+                <th>Next-Step Mode</th>
+                <th>Same-Step Mode</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Reset timing</td>
+                <td>Deferred to the next <code>step()</code></td>
+                <td>Within the same <code>step()</code></td>
+            </tr>
+            <tr>
+                <td><code>next_obs</code> at termination</td>
+                <td>Terminal state \(s_\text{term}\)</td>
+                <td>Reset state \(s_0'\)</td>
+            </tr>
+            <tr>
+                <td>Terminal obs location</td>
+                <td><code>next_obs</code> directly</td>
+                <td><code>info["final_obs"]</code></td>
+            </tr>
+            <tr>
+                <td>Stale obs at episode boundaries</td>
+                <td><span class="badge badge-high">Yes -- must mask</span></td>
+                <td><span class="badge badge-low">No</span></td>
+            </tr>
+            <tr>
+                <td>Truncation bootstrap</td>
+                <td><span class="badge badge-low"><code>V(next_obs)</code> directly</span></td>
+                <td><code>V(info["final_obs"])</code> required</td>
+            </tr>
+            <tr>
+                <td>Sync env throughput</td>
+                <td><span class="badge badge-low">Reset hidden in next batch</span></td>
+                <td><span class="badge badge-high">Resets blocks the batch</span></td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+
+<section id="gae">
+    <h2>How does Autoreset-Mode Affect GAE</h2>
+    <p>
+        As Generalised Advantage Estimation (GAE) in PPO operates on rollouts from vector environments then it's a helpful example to show how autoreset-mode impact the implementation. Critically, at an episode boundary, two things must hold:
+    </p>
+    <ol>
+        <li>The TD error \(\delta_t\) must use the correct bootstrap value (zero for termination, \(\gamma V(s_{t+1})\) for truncation).</li>
+        <li>The GAE accumulation must reset: advantages from the new episode must not bleed back into the old one.</li>
+    </ol>
+    <p>
+        Both modes satisfy condition 2 the same way: multiply the incoming GAE by
+        <code>(1 - episode_over[t])</code> when accumulating backwards. The difference is in condition 1.
+    </p>
+
+    <div class="code-tabs">
+        <div class="scenario-toggle code-tab-strip">
+            <button class="scenario-btn active code-tab-btn" data-tab="tab-ns">Next-Step</button>
+            <button class="scenario-btn code-tab-btn" data-tab="tab-ss">Same-Step</button>
+            <button class="scenario-btn code-tab-btn" data-tab="tab-diff">Diff</button>
+        </div>
+        <div class="code-tab-panel" id="tab-ns">
+        <p class="code-tab-description">
+            The <code>next_obs</code> stored at a <em>truncated</em> step is the actual next state before the reset, so
+            you can bootstrap directly from <code>values[t+1]</code>. For terminated steps, the bootstrap is zero. No
+            special handling of <code>info</code> is needed. The catch: the step at \(t+1\) after any episode boundary
+            carries a stale observation, so <strong>mask it from the PPO loss</strong>.
+        </p>
+        <pre><code id="ns-combined-code"><span class="code-keyword">def</span> compute_gae(
+    observations,  <span class="code-comment"># (rollout_length+1, num_envs)</span>
+    rewards,       <span class="code-comment"># (rollout_length, num_envs)</span>
+    terminations,  <span class="code-comment"># (rollout_length, num_envs)</span>
+    truncations,   <span class="code-comment"># (rollout_length, num_envs)</span>
+    initial_episode_over,  <span class="code-comment"># (num_envs,)</span>
+    gamma=<span class="code-number">0.99</span>, gae_lambda=<span class="code-number">0.95</span>,
+):
+    rollout_length, num_envs = rewards.shape
+
+    values = value_fn(observations)
+
+    advantages = np.zeros_like((rollout_length, num_envs))
+    gae = np.zeros(num_envs)
+    episode_over = np.logical_or(terminated, truncated)
+
+    <span class="code-keyword">for</span> t <span class="code-keyword">in</span> reversed(range(rollout_length)):
+        next_val = np.logical_not(terminations[t]) * values[t + <span class="code-number">1</span>]
+        delta = rewards[t] + gamma * next_val - values[t]
+        advantages[t] = gae = delta + gamma * gae_lambda * (<span class="code-number">1</span> - episode_over[t]) * gae
+
+    <span class="code-comment"># Mask the first timestep if the last rollout's timestep was episode over</span>
+    mask = np.concatenate([initial_episode_over, np.logical_not(episode_over[:-<span class="code-number">1</span>])])
+    <span class="code-keyword">return</span> advantages, mask
+</code></pre>
+
+        </div>
+        <div class="code-tab-panel" id="tab-ss" style="display:none">
+            <p class="code-tab-description">
+                Every step has a valid observation, so no masking is needed. The only extra work is at truncated boundaries:
+                <code>next_obs</code> is the reset observation (wrong for bootstrapping), so you must use
+                <code>info["final_obs"]</code> to get the actual last state and compute \(V(s_\text{last})\) from it.
+                For terminated steps, the bootstrap is zero regardless.
+            </p>
+            <pre><code id="ss-combined-code"><span class="code-keyword">def</span> compute_gae(
+    observations,  <span class="code-comment"># (rollout_length, num_envs)</span>
+    next_observations,  <span class="code-comment"># (rollout_length, num_envs)</span>
+    rewards,       <span class="code-comment"># (rollout_length, num_envs)</span>
+    terminations,  <span class="code-comment"># (rollout_length, num_envs)</span>
+    truncations,   <span class="code-comment"># (rollout_length, num_envs)</span>
+    gamma=<span class="code-number">0.99</span>, gae_lambda=<span class="code-number">0.95</span>,
+):
+    rollout_length, num_envs = rewards.shape
+
+    values = value_fn(observations)
+    next_values = value_fn(next_observations)
+
+    advantages = np.zeros_like((rollout_length, num_envs))
+    gae = np.zeros(num_envs)
+    episode_over = np.logical_or(terminated, truncated)
+
+    <span class="code-keyword">for</span> t <span class="code-keyword">in</span> reversed(range(rollout_length)):
+        next_val = np.logical_not(terminations[t]) * next_values[t]
+        delta = rewards[t] + gamma * next_val - values[t]
+        advantages[t] = gae = delta + gamma * gae_lambda * (<span class="code-number">1</span> - episode_over[t]) * gae
+
+    <span class="code-comment"># No masking needed: every step has a valid observation.</span>
+    <span class="code-keyword">return</span> advantages
+            </code></pre>
+        </div>
+        <div class="code-tab-panel" id="tab-diff" style="display:none">
+            <pre class="diff-view"><code id="diff-view-content"></code></pre>
+        </div>
+    </div>
+</section>
+
+<section id="comparison">
+    <h2>Summary</h2>
+
+    <table class="comparison-table">
+        <thead>
+            <tr>
+                <th>Property</th>
+                <th>Next-Step</th>
+                <th>Same-Step</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Wasted steps per boundary</td>
+                <td><span class="badge badge-high">1 (must mask)</span></td>
+                <td><span class="badge badge-low">0</span></td>
+            </tr>
+            <tr>
+                <td>Truncation bootstrap</td>
+                <td><span class="badge badge-low">V(next_obs) — correct</span></td>
+                <td><span class="badge badge-high">V(info["final_obs"]) — needs extra value call</span></td>
+            </tr>
+            <tr>
+                <td>info["final_obs"] required</td>
+                <td><span class="badge badge-low">No</span></td>
+                <td>For truncated only</td>
+            </tr>
+            <tr>
+                <td>All rollout steps usable</td>
+                <td><span class="badge badge-high">No</span></td>
+                <td><span class="badge badge-low">Yes</span></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <div class="insight-box">
+        <h4>If you have the option, which mode should you use?</h4>
+        <p>
+            It depends on where your bottleneck is. <strong>Same-Step</strong> is the simpler choice for
+            implementation: every step is valid, no masking required, though you need to compute values for
+            both <code>observations</code> and <code>next_observations</code> buffers separately.
+        </p>
+        <p>
+            <strong>Next-Step</strong> is favoured by high-throughput libraries like EnvPool because it hides
+            reset latency for environments where <code>reset()</code> is expensive (Atari, physics simulators).
+            For environments with cheap resets -- random array initialisation, most gridworlds -- the throughput
+            difference is negligible and the masking overhead of Next-Step is pure cost. The trade-off is one
+            stale step per episode boundary that must be masked from the loss.
+        </p>
+    </div>
+</section>
+
+<section id="references">
+    <h2>References</h2>
+    <p>
+        Towers, M., et al. (2024). <em>Gymnasium: A Standard Interface for Reinforcement Learning Environments.</em>
+        <a href="https://github.com/Farama-Foundation/Gymnasium">github.com/Farama-Foundation/Gymnasium</a>
+    </p>
+    <p>
+        Towers, M. (2025). <em>Deep Dive: Autoreset Modes in Gymnasium v1.1 Vector Environments.</em>
+        <a href="https://farama.org/Vector-Autoreset-Mode">farama.org</a>
+    </p>
+</section>
+
+<script src="https://unpkg.com/diff@5.2.0/dist/diff.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    // Vector env visualisation
+    runVecEnvViz();
+
+    // Code tabs for full-loop section
+    document.querySelectorAll('.code-tab-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.querySelectorAll('.code-tab-btn').forEach(function (b) { b.classList.remove('active'); });
+            this.classList.add('active');
+            document.querySelectorAll('.code-tab-panel').forEach(function (p) { p.style.display = 'none'; });
+            document.getElementById(this.dataset.tab).style.display = '';
+            if (this.dataset.tab === 'tab-diff') renderDiff();
+        });
+    });
+
+    function renderDiff() {
+        var nsText = document.getElementById('ns-combined-code').textContent;
+        var ssText = document.getElementById('ss-combined-code').textContent;
+        var diff = Diff.diffLines(nsText, ssText);
+        var html = '';
+        diff.forEach(function (part) {
+            var cls = part.added ? 'diff-add' : part.removed ? 'diff-remove' : 'diff-unchanged';
+            var prefix = part.added ? '+' : part.removed ? '-' : ' ';
+            var lines = part.value.split('\n');
+            if (lines[lines.length - 1] === '') lines.pop();
+            lines.forEach(function (line) {
+                html += '<span class="diff-line ' + cls + '">' + prefix + escapeHtml(line) + '\n</span>';
+            });
+        });
+        document.getElementById('diff-view-content').innerHTML = html;
+    }
+
+    function escapeHtml(str) {
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function runVecEnvViz() {
+        var TOTAL = 20, BATCH_RESET = 12;
+        var EP_LENS = [5, 9, 12];
+        var EP_COLORS = ['ep1', 'ep2', 'ep3'];
+
+        // Non-autoreset: ep1 → idle → ep2 per env
+        var noAutoSegments = EP_LENS.map(function(len) {
+            var segs = [{ start: 0, end: len, cls: 'ep1' }];
+            if (len < BATCH_RESET) {
+                segs.push({ start: len, end: BATCH_RESET, cls: 'idle' });
+            }
+            segs.push({ start: BATCH_RESET, end: TOTAL, cls: 'ep2' });
+            return segs;
+        });
+
+        // Autoreset: episodes chain immediately with cycling colours
+        var arSegments = EP_LENS.map(function(len) {
+            var segs = [], t = 0, epIdx = 0;
+            while (t < TOTAL) {
+                var end = Math.min(t + len, TOTAL);
+                segs.push({ start: t, end: end, cls: EP_COLORS[epIdx % EP_COLORS.length] });
+                t = end;
+                epIdx++;
+            }
+            return segs;
+        });
+
+        function setupTrack(trackEl, segments) {
+            trackEl.innerHTML = '';
+            return segments.map(function(seg) {
+                var el = document.createElement('div');
+                el.className = 'env-segment ' + seg.cls;
+                el.style.left = (seg.start / TOTAL * 100) + '%';
+                el.style.width = '0%';
+                trackEl.appendChild(el);
+                return { el: el, seg: seg };
+            });
+        }
+
+        var noTracks = [0, 1, 2].map(function(i) { return document.getElementById('no-env-' + i); });
+        var arTracks = [0, 1, 2].map(function(i) { return document.getElementById('ar-env-' + i); });
+        var noSegsEls = noTracks.map(function(track, i) { return setupTrack(track, noAutoSegments[i]); });
+        var arSegsEls = arTracks.map(function(track, i) { return setupTrack(track, arSegments[i]); });
+
+        var playheadNo = document.getElementById('playhead-no');
+        var playheadAr = document.getElementById('playhead-ar');
+        var t = 0, timer = null;
+
+        function updateSegments(segsEls, time) {
+            segsEls.forEach(function(segs) {
+                segs.forEach(function(item) {
+                    var visEnd = Math.min(time, item.seg.end);
+                    var w = visEnd <= item.seg.start ? 0 : (visEnd - item.seg.start) / TOTAL * 100;
+                    item.el.style.width = w + '%';
+                });
+            });
+        }
+
+        function tick() {
+            var pct = (t / TOTAL * 100) + '%';
+            playheadNo.style.left = pct;
+            playheadAr.style.left = pct;
+            updateSegments(noSegsEls, t);
+            updateSegments(arSegsEls, t);
+            t++;
+            if (t > TOTAL) {
+                clearInterval(timer);
+                timer = null;
+                setTimeout(restart, 1500);
+            }
+        }
+
+        function restart() {
+            t = 0;
+            playheadNo.style.left = '0%';
+            playheadAr.style.left = '0%';
+            updateSegments(noSegsEls, 0);
+            updateSegments(arSegsEls, 0);
+            timer = setInterval(tick, 80);
+        }
+
+        restart();
+    }
+});
+</script>
